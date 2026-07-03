@@ -35,6 +35,43 @@ describe("viewer API", () => {
     ]);
 
     const html = await (await app.request("/")).text();
-    expect(html).toContain("iq-helix");
+    expect(html).toContain("Helix");
+  });
+
+  it("/api/graph가 노드 + 사전 솎인 이웃을 반환한다 (로드맵 형제 연결)", async () => {
+    const store = new FileHelixStore(await mkdtemp(join(tmpdir(), "helix-")));
+    const src = (chapter: string) => ({
+      kind: "spiral-buddy" as const,
+      roadmapId: "unit-testing/mocking",
+      chapterId: chapter,
+    });
+    await store.createSubject({ title: "Stub", tags: ["mock"], sources: [src("01.md")] });
+    await store.createSubject({ title: "Spy", tags: ["mock"], sources: [src("02.md")] });
+    await store.appendLayer("stub", {
+      depth: 1,
+      date: "2026-06-01",
+      content: { sections: [{ heading: "한 줄 요약", body: "스텁." }] },
+    });
+    await store.appendLayer("spy", {
+      depth: 1,
+      date: "2026-06-02",
+      content: { sections: [{ heading: "한 줄 요약", body: "스파이." }] },
+    });
+
+    const graph = await (await createApp(store).request("/api/graph")).json();
+    expect(graph.nodes).toHaveLength(2);
+    // lastTouched ASC 정렬 — stub(06-01)이 먼저
+    expect(graph.nodes[0].id).toBe("stub");
+    expect(graph.nodes[1].id).toBe("spy");
+    // 같은 로드맵 → 서로 sibling 이웃, degW > 0
+    const stub = graph.nodes[0];
+    expect(stub.neighbors).toEqual([
+      expect.objectContaining({ id: "spy", kind: "sibling" }),
+    ]);
+    expect(stub.degW).toBeGreaterThan(0);
+    expect(stub.roadmapTitle).toBe("Mocking");
+    expect(graph.roadmaps).toEqual([
+      expect.objectContaining({ id: "unit-testing/mocking", size: 2 }),
+    ]);
   });
 });

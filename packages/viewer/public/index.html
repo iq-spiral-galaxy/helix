@@ -3,31 +3,82 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>iq-helix</title>
+  <title>Helix</title>
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+  <link
+    rel="stylesheet"
+    href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css"
+  />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link
-    href="https://fonts.googleapis.com/css2?family=Noto+Serif+KR:wght@400;600;900&family=IBM+Plex+Sans+KR:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap"
+    href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&display=swap"
     rel="stylesheet"
   />
   <link rel="stylesheet" href="/styles.css" />
 </head>
 <body>
-  <canvas id="stars" aria-hidden="true"></canvas>
-  <header class="top">
-    <a class="brand" href="#/">
-      <svg width="26" height="18" viewBox="0 0 26 18" aria-hidden="true">
-        <path d="M2 9 C5 2, 9 2, 12 9 S 19 16, 24 9" fill="none" stroke="#D4B27A" stroke-width="1.8"/>
-        <path d="M2 9 C5 16, 9 16, 12 9 S 19 2, 24 9" fill="none" stroke="#E84852" stroke-width="1.8"/>
-      </svg>
-      <span class="brand-name">iq-helix</span>
-    </a>
-    <nav>
-      <a href="#/" data-nav="subjects">관측소</a>
-      <a href="#/q" data-nav="questions">열린 질문</a>
-    </nav>
-  </header>
-  <main id="app" aria-live="polite"></main>
+  <div class="shell">
+    <aside class="sidebar">
+      <a class="brand" href="#/">
+        <svg class="brand-mark" width="24" height="24" viewBox="0 0 24 24" aria-hidden="true">
+          <!-- 이중 나선: 두 가닥(Layer=파랑, Question=세이지)이 시간축을 따라 꼬인다.
+               패턴을 세로로 길게 그려 창 안에서 한 주기씩 흘려보내면 나선이 도는 착시(seamless). -->
+          <g class="brand-flow" fill="none" stroke-linecap="round" stroke-linejoin="round">
+            <path stroke="rgba(230,232,236,0.22)" stroke-width="1.1"
+              d="M7.6 -12 L16.4 -12 M7.6 -4 L16.4 -4 M7.6 4 L16.4 4 M7.6 12 L16.4 12 M7.6 20 L16.4 20 M7.6 28 L16.4 28 M7.6 36 L16.4 36"/>
+            <path stroke="#5e9bff" stroke-width="1.6"
+              d="M12.00 -16.0 L15.23 -14.4 L17.23 -12.8 L17.23 -11.2 L15.23 -9.6 L12.00 -8.0 L8.77 -6.4 L6.77 -4.8 L6.77 -3.2 L8.77 -1.6 L12.00 -0.0 L15.23 1.6 L17.23 3.2 L17.23 4.8 L15.23 6.4 L12.00 8.0 L8.77 9.6 L6.77 11.2 L6.77 12.8 L8.77 14.4 L12.00 16.0 L15.23 17.6 L17.23 19.2 L17.23 20.8 L15.23 22.4 L12.00 24.0 L8.77 25.6 L6.77 27.2 L6.77 28.8 L8.77 30.4 L12.00 32.0 L15.23 33.6 L17.23 35.2 L17.23 36.8 L15.23 38.4 L12.00 40.0"/>
+            <path stroke="#7fb39a" stroke-width="1.6"
+              d="M12.00 -16.0 L8.77 -14.4 L6.77 -12.8 L6.77 -11.2 L8.77 -9.6 L12.00 -8.0 L15.23 -6.4 L17.23 -4.8 L17.23 -3.2 L15.23 -1.6 L12.00 -0.0 L8.77 1.6 L6.77 3.2 L6.77 4.8 L8.77 6.4 L12.00 8.0 L15.23 9.6 L17.23 11.2 L17.23 12.8 L15.23 14.4 L12.00 16.0 L8.77 17.6 L6.77 19.2 L6.77 20.8 L8.77 22.4 L12.00 24.0 L15.23 25.6 L17.23 27.2 L17.23 28.8 L15.23 30.4 L12.00 32.0 L8.77 33.6 L6.77 35.2 L6.77 36.8 L8.77 38.4 L12.00 40.0"/>
+          </g>
+        </svg>
+        <span class="brand-name">Helix</span>
+      </a>
+      <button class="side-search" id="search-trigger" type="button" aria-label="검색">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true">
+          <circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/>
+        </svg>
+        <span>검색</span>
+        <kbd>⌘K</kbd>
+      </button>
+      <nav class="side-nav">
+        <a href="#/" data-nav="subjects">나선 일지</a>
+        <a href="#/map" data-nav="map">나선 지도</a>
+        <a href="#/q" data-nav="questions">남은 질문<span class="count" id="q-count"></span></a>
+      </nav>
+      <div class="side-label mono-label">나선</div>
+      <div class="side-list" id="side-list"></div>
+      <div class="side-foot" id="side-foot"></div>
+    </aside>
+    <div class="workspace">
+      <div class="tabbar">
+        <button class="tnav" id="nav-back" aria-label="뒤로" title="뒤로">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg>
+        </button>
+        <button class="tnav" id="nav-fwd" aria-label="앞으로" title="앞으로">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18l6-6-6-6"/></svg>
+        </button>
+        <div class="tabs" id="tabs"></div>
+        <button class="tnav" id="tab-new" aria-label="새 탭" title="새 탭">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
+        </button>
+      </div>
+      <main id="app" aria-live="polite"></main>
+    </div>
+  </div>
+  <div class="search-modal" id="search-modal" role="dialog" aria-modal="true" aria-label="검색" hidden>
+    <div class="search-panel">
+      <div class="search-head">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true">
+          <circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/>
+        </svg>
+        <input id="search-input" type="text" placeholder="나선 · layer · 질문 검색…" autocomplete="off" spellcheck="false" />
+        <kbd>esc</kbd>
+      </div>
+      <div class="search-results" id="search-results"></div>
+    </div>
+  </div>
   <script src="/app.js" type="module"></script>
 </body>
 </html>
