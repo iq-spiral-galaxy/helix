@@ -99,12 +99,49 @@ code {
   padding: 2px 8px 14px;
   color: var(--text);
 }
-/* 브랜드 마크 — 이중 나선이 시간축을 따라 천천히 감겨 올라간다 (한 주기 = seamless 루프) */
-.brand-mark { display: block; flex: none; overflow: hidden; transition: transform 0.25s ease; }
-.brand:hover .brand-mark { transform: scale(1.12); }
+/* 브랜드 마크 — 이중 나선이 시간축을 따라 천천히 감겨 올라간다 (한 주기 = seamless 루프).
+   앞/뒤 세그먼트의 명암 = 입체 교차, 반복 그라디언트 = 가닥을 타고 흐르는 빛, 오라 = 은은한 발광. */
+.brand-mark {
+  display: block;
+  flex: none;
+  overflow: hidden;
+  transition: transform 0.25s ease;
+  animation: brand-aura 9s ease-in-out infinite;
+}
+.brand:hover .brand-mark {
+  transform: scale(1.12);
+  animation: none;
+  filter: drop-shadow(0 0 4px rgba(94, 155, 255, 0.55)) drop-shadow(0 0 10px rgba(127, 179, 154, 0.3));
+}
 .brand-flow { animation: brand-flow 7s linear infinite; }
 @keyframes brand-flow {
   to { transform: translateY(-16px); } /* 정확히 사인 한 주기(P=16px) → 이어붙는 지점이 없음 */
+}
+@keyframes brand-aura {
+  0%, 100% { filter: drop-shadow(0 0 2.5px rgba(94, 155, 255, 0.2)) drop-shadow(0 0 7px rgba(127, 179, 154, 0.1)); }
+  50% { filter: drop-shadow(0 0 3.5px rgba(94, 155, 255, 0.42)) drop-shadow(0 0 9px rgba(127, 179, 154, 0.22)); }
+}
+
+/* 성운 헤일로 — 오라와 같은 9초 주기로 맥동 */
+.brand-halo {
+  transform-box: view-box;
+  transform-origin: center;
+  animation: brand-halo 9s ease-in-out infinite;
+}
+@keyframes brand-halo {
+  0%, 100% { transform: scale(0.9); opacity: 0.7; }
+  50% { transform: scale(1.12); opacity: 1; }
+}
+
+/* 잔별 — 나선을 따라 피어올라 사라지는 입자 (셋이 서로 다른 주기·시차) */
+.brand-dust circle { animation: dust-rise 6s linear infinite; }
+.brand-dust .d2 { animation-duration: 8.5s; animation-delay: 2.6s; }
+.brand-dust .d3 { animation-duration: 7.2s; animation-delay: 4.4s; }
+@keyframes dust-rise {
+  0% { transform: translateY(0); opacity: 0; }
+  12% { opacity: 0.9; }
+  70% { opacity: 0.45; }
+  100% { transform: translateY(-19px); opacity: 0; }
 }
 .brand-name {
   font-size: 1.15rem;
@@ -115,12 +152,19 @@ code {
   background-clip: text;
   -webkit-text-fill-color: transparent;
   transition: opacity 0.2s;
+  animation: brand-name-breathe 9s ease-in-out infinite; /* 마크 오라와 같은 호흡 */
+}
+@keyframes brand-name-breathe {
+  0%, 100% { filter: none; }
+  50% { filter: drop-shadow(0 0 7px rgba(94, 155, 255, 0.3)); }
 }
 .brand:hover .brand-name {
   background-image: linear-gradient(105deg, var(--accent), var(--link));
 }
 @media (prefers-reduced-motion: reduce) {
-  .brand-flow { animation: none; }
+  .brand-flow, .brand-halo, .brand-name { animation: none; }
+  .brand-dust { display: none; }
+  .brand-mark { animation: none; filter: drop-shadow(0 0 3px rgba(94, 155, 255, 0.25)); }
   .brand:hover .brand-mark { transform: none; }
 }
 
