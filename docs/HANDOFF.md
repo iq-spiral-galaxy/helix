@@ -24,7 +24,7 @@
 
 | 항목 | 값 |
 |---|---|
-| 레포 | `~/iq-lab/iq-agent-lab/iq-helix` (github.com/iq-agent-lab/iq-helix, main) |
+| 레포 | `~/iq-lab/iq-agent-lab/iq-helix` (github.com/iq-spiral-galaxy/helix, main — iq-agent-lab/iq-helix에서 이관) |
 | helix 데이터 루트 | `~/helix` (`subjects/*.md` + 파생 인덱스 `_helix.json`) |
 | Obsidian vault (import 원본, read-only) | `/Users/ibm514/Documents/Obsidian Vault` |
 | spiral-buddy 레포 (Phase 3 대상) | `~/iq-lab/iq-agent-lab/iq-spiral-buddy` |
