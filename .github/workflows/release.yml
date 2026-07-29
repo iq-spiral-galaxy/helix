@@ -109,7 +109,11 @@ jobs:
           cp assembled/Helix-*-arm64.dmg assembled/Helix-latest-arm64.dmg
           cp assembled/Helix-*-x64.dmg assembled/Helix-latest.dmg
           cp assembled/Helix-Setup-*-x64.exe assembled/Helix-latest-Setup.exe
-          cp assembled/Helix-*-x64.AppImage assembled/Helix-latest.AppImage
+          for source in assembled/Helix-*-x86_64.AppImage; do
+            canonical="${source%-x86_64.AppImage}-x64.AppImage"
+            mv "$source" "$canonical"
+            cp "$canonical" assembled/Helix-latest.AppImage
+          done
           cp electron/build/icon.png assembled/Helix.png
           cp scripts/install.sh assembled/install.sh
           cp scripts/install.ps1 assembled/install.ps1
