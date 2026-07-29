@@ -13,6 +13,12 @@ await build({
   format: "esm",
   target: "node22",
   external: ["electron"],
+  banner: {
+    js: [
+      'import { createRequire as __helixCreateRequire } from "node:module";',
+      "const require = __helixCreateRequire(import.meta.url);",
+    ].join("\n"),
+  },
   alias: {
     "@iq-helix/core": "./packages/core/dist/index.js",
     "@iq-helix/viewer": "./packages/viewer/dist/index.js",

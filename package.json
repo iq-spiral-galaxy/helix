@@ -1,6 +1,6 @@
 {
   "name": "iq-helix",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "A local desktop notebook for tracing how understanding evolves.",
   "private": true,
   "type": "module",
