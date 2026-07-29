@@ -58,6 +58,10 @@
         <a href="#/" data-nav="subjects">나선 일지</a>
         <a href="#/map" data-nav="map">나선 지도</a>
         <a href="#/q" data-nav="questions">열린 질문</a>
+        <a href="#/bookmarks" data-nav="bookmarks" id="side-bookmarks">
+          북마크
+          <span class="count" id="bookmark-count" aria-label="저장한 북마크 수"></span>
+        </a>
       </nav>
       <div class="side-list" id="side-list"></div>
       <button class="side-settings" id="settings-trigger" type="button"
@@ -90,10 +94,12 @@
         <button class="tnav" id="nav-fwd" aria-label="앞으로" title="앞으로">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18l6-6-6-6"/></svg>
         </button>
-        <div class="tabs" id="tabs" role="tablist" aria-label="열린 Helix 탭"></div>
-        <button class="tnav" id="tab-new" aria-label="새 탭" title="새 탭">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
-        </button>
+        <div class="tabstrip-scroll">
+          <div class="tabs" id="tabs" role="tablist" aria-label="열린 Helix 탭"></div>
+          <button class="tnav tab-new" id="tab-new" aria-label="새 탭" title="새 탭">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M12 4v16M4 12h16"/></svg>
+          </button>
+        </div>
       </div>
       <div class="sr-only" id="route-status" aria-live="polite"></div>
       <main id="app"></main>

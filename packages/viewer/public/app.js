@@ -1,17 +1,32 @@
 import {
   filterOpenQuestions,
+  parseBookmarkIds,
   selectHomeFocus,
+  selectBookmarkItems,
   sortOpenQuestions,
   sortSubjects,
+  toggleBookmark,
 } from "/experience.js";
 
 const app = document.getElementById("app");
-const routes = { "": renderHome, q: renderQuestions, s: renderTimeline, map: renderMap };
+const routes = {
+  "": renderHome,
+  bookmarks: renderBookmarks,
+  q: renderQuestions,
+  s: renderTimeline,
+  map: renderMap,
+};
+const BOOKMARK_KEY = "helix.bookmarks";
 let mapHandle = null; // 나선 지도(#/map) 캔버스 정리 훅 (라우트 전환 시 destroy)
 let mapToken = 0; // renderMap 비동기 import 중 라우트가 바뀌면 mount 취소
 let routeToken = 0; // 모든 라우트의 느린 응답이 최신 화면을 덮지 못하게 하는 세대 번호
 let strandObserver = null;
 let strandFrame = 0;
+let bookmarkIds = [];
+let knownSubjectIds = null;
+try {
+  bookmarkIds = parseBookmarkIds(localStorage.getItem(BOOKMARK_KEY));
+} catch { /* 저장소를 쓸 수 없으면 현재 세션 메모리로 동작 */ }
 
 /* ---------- 탭 (Obsidian풍 워크스페이스) ---------- */
 
@@ -36,6 +51,7 @@ function titleForRoute(hash) {
   const [, rawPage = "", rawId] = (hash || "#/").split("/");
   const page = rawPage.split("?")[0];
   if (page === "q") return "열린 질문";
+  if (page === "bookmarks") return "북마크";
   if (page === "map") {
     const id = decodeURIComponent((rawId ?? "").split("?")[0]);
     return id ? repoLabelOf(id) : "나선 지도";
@@ -79,6 +95,12 @@ function renderTabs() {
       </div>`,
     )
     .join("");
+  requestAnimationFrame(() => {
+    document.querySelector(".tab-wrap.active")?.scrollIntoView({
+      block: "nearest",
+      inline: "nearest",
+    });
+  });
 }
 
 function setTabTitle(title) {
@@ -121,6 +143,12 @@ function openInNewTab(route) {
   activeTab = tabs.length - 1;
   saveTabs();
   renderTabs();
+  requestAnimationFrame(() => {
+    document.getElementById("tab-new").scrollIntoView({
+      block: "nearest",
+      inline: "nearest",
+    });
+  });
   go(route);
 }
 
@@ -228,6 +256,48 @@ function routeIsCurrent(token) {
   return token === routeToken;
 }
 
+/* ---------- 북마크 ---------- */
+
+function saveBookmarkIds(next) {
+  bookmarkIds = parseBookmarkIds(JSON.stringify(next));
+  try {
+    localStorage.setItem(BOOKMARK_KEY, JSON.stringify(bookmarkIds));
+  } catch { /* 저장소 제한 시 현재 화면에서는 계속 동작 */ }
+  syncBookmarkCount();
+  return bookmarkIds;
+}
+
+function syncBookmarkCount(subjects) {
+  if (Array.isArray(subjects)) {
+    knownSubjectIds = new Set(subjects.map((subject) => subject.id));
+  }
+  const count = document.getElementById("bookmark-count");
+  if (!count) return;
+  const total = knownSubjectIds
+    ? bookmarkIds.filter((id) => knownSubjectIds.has(id)).length
+    : bookmarkIds.length;
+  count.textContent = total ? String(total) : "";
+  count.setAttribute("aria-label", `저장한 북마크 ${total}개`);
+}
+
+function paintBookmarkButton(button, id) {
+  if (!button) return;
+  const saved = bookmarkIds.includes(id);
+  button.setAttribute("aria-pressed", String(saved));
+  button.title = saved ? "북마크 해제" : "북마크 추가";
+  const label = button.querySelector(".bookmark-label");
+  if (label) label.textContent = saved ? "저장됨" : "북마크";
+}
+
+function setBookmarked(id, title) {
+  const wasSaved = bookmarkIds.includes(id);
+  saveBookmarkIds(toggleBookmark(bookmarkIds, id));
+  const saved = !wasSaved;
+  document.getElementById("route-status").textContent =
+    `${title} 북마크를 ${saved ? "추가했습니다." : "해제했습니다."}`;
+  return saved;
+}
+
 /* ---------- 사이드바 ---------- */
 
 /** 깨진/오염된 localStorage 값에 내성 — 항상 객체를 돌려준다 */
@@ -246,6 +316,7 @@ async function initSidebar() {
       getJSON("/api/subjects"),
       getJSON("/api/roadmaps"),
     ]);
+    syncBookmarkCount(subjects);
     const byId = Object.fromEntries(subjects.map((s) => [s.id, s]));
     subjectTitles = Object.fromEntries(subjects.map((s) => [s.id, displayTitle(s.title)]));
     // 로딩 전에 열려서 "…"로 남은 탭 제목을 소급 확정
@@ -343,7 +414,14 @@ async function initSidebar() {
 function markSidebar() {
   const [, rawPage = "", rawId] = location.hash.split("/");
   const page = rawPage.split("?")[0];
-  const navFor = page === "q" ? "questions" : page === "map" ? "map" : "subjects";
+  const navFor =
+    page === "q"
+      ? "questions"
+      : page === "map"
+        ? "map"
+        : page === "bookmarks"
+          ? "bookmarks"
+          : "subjects";
   for (const a of document.querySelectorAll("[data-nav]")) {
     if (a.dataset.nav === navFor) {
       a.setAttribute("aria-current", "page");
@@ -462,6 +540,7 @@ document.getElementById("mobile-search").addEventListener("click", openSearch);
 document.getElementById("mobile-bottom-search").addEventListener("click", openSearch);
 mobileQuery.addEventListener("change", syncMobileSidebar);
 syncMobileSidebar();
+syncBookmarkCount();
 void route();
 void initSidebar();
 
@@ -617,6 +696,13 @@ window.addEventListener("storage", (event) => {
     else delete root.dataset.sidebar;
     syncMobileSidebar();
   }
+  if (event.key === BOOKMARK_KEY) {
+    bookmarkIds = parseBookmarkIds(event.newValue);
+    syncBookmarkCount();
+    const button = document.querySelector("[data-bookmark-id]");
+    if (button) paintBookmarkButton(button, button.dataset.bookmarkId);
+    if (app.dataset.page === "bookmarks") void route();
+  }
 });
 syncThemeControls();
 
@@ -769,6 +855,61 @@ function mark(text, q) {
   const i = text.toLowerCase().indexOf(q);
   if (i === -1) return esc(text);
   return `${esc(text.slice(0, i))}<mark>${esc(text.slice(i, i + q.length))}</mark>${esc(text.slice(i + q.length))}`;
+}
+
+/* ---------- 북마크 목록 ---------- */
+
+async function renderBookmarks(_id, token) {
+  const subjects = await getJSON("/api/subjects");
+  if (!routeIsCurrent(token)) return;
+  syncBookmarkCount(subjects);
+
+  app.innerHTML = `
+    <header class="collection-mast">
+      <h1 class="page-title">
+        북마크 <span class="title-count" id="bookmark-page-count"></span>
+      </h1>
+    </header>
+    <div class="bookmark-list" id="bookmark-list"></div>`;
+
+  const list = document.getElementById("bookmark-list");
+  const pageCount = document.getElementById("bookmark-page-count");
+  const paint = () => {
+    const items = selectBookmarkItems(bookmarkIds, subjects);
+    pageCount.textContent = String(items.length);
+    list.innerHTML = items.length
+      ? items
+          .map(
+            (subject) => `
+              <div class="bookmark-row">
+                ${subjectRow(subject)}
+                <button class="bookmark-remove" type="button"
+                  data-bookmark-remove="${esc(subject.id)}"
+                  aria-label="${esc(displayTitle(subject.title))} 북마크 해제"
+                  title="북마크 해제">
+                  <svg class="bookmark-icon" viewBox="0 0 24 24" aria-hidden="true">
+                    <path d="M6 4.5A1.5 1.5 0 0 1 7.5 3h9A1.5 1.5 0 0 1 18 4.5V21l-6-4-6 4Z"/>
+                  </svg>
+                </button>
+              </div>`,
+          )
+          .join("")
+      : `<div class="empty bookmark-empty">
+          <p>저장한 노트가 없습니다.</p>
+          <a href="#/">나선 일지 보기</a>
+        </div>`;
+  };
+
+  list.addEventListener("click", (event) => {
+    const button = event.target.closest("[data-bookmark-remove]");
+    if (!button) return;
+    const id = button.dataset.bookmarkRemove;
+    const subject = subjects.find((item) => item.id === id);
+    if (!subject) return;
+    setBookmarked(id, displayTitle(subject.title));
+    paint();
+  });
+  paint();
 }
 
 /* ---------- 나선 일지 (랜딩) ---------- */
@@ -1069,6 +1210,13 @@ async function renderTimeline(id, token) {
         <h1 class="page-title">${esc(displayTitle(s.title))}</h1>
         <p class="subject-meta">Layer ${s.layers.length}${open.length ? ` · 열린 질문 ${open.length}` : ""}</p>
       </div>
+      <button class="bookmark-toggle" type="button"
+        data-bookmark-id="${esc(s.id)}" aria-label="북마크" aria-pressed="false">
+        <svg class="bookmark-icon" viewBox="0 0 24 24" aria-hidden="true">
+          <path d="M6 4.5A1.5 1.5 0 0 1 7.5 3h9A1.5 1.5 0 0 1 18 4.5V21l-6-4-6 4Z"/>
+        </svg>
+        <span class="bookmark-label">북마크</span>
+      </button>
     </header>
     ${
       nextQuestion
@@ -1103,6 +1251,13 @@ async function renderTimeline(id, token) {
         ${s.layers.map((l) => layerCard(l, qById, l.index === latest?.index)).join("")}
       </div>
     </div>`;
+
+  const bookmarkButton = app.querySelector("[data-bookmark-id]");
+  paintBookmarkButton(bookmarkButton, s.id);
+  bookmarkButton.addEventListener("click", () => {
+    setBookmarked(s.id, displayTitle(s.title));
+    paintBookmarkButton(bookmarkButton, s.id);
+  });
 
   if (showStrands) mountStrands(s, lanes, laneCount);
   const target = new URLSearchParams(location.hash.split("?")[1]).get("layer");

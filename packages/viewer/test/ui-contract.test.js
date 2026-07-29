@@ -161,4 +161,71 @@ describe("Helix viewer UI contract", () => {
     expect(css).toMatch(/\.question-sort > span \{[\s\S]*?white-space: nowrap;/);
     expect(css).toMatch(/\.question-sort > span \{[\s\S]*?writing-mode: horizontal-tb;/);
   });
+
+  it("새 탭 버튼을 탭 목록 바로 뒤의 같은 스크롤 흐름에 둔다", () => {
+    expect(html).toMatch(
+      /class="tabstrip-scroll"[\s\S]*?id="tabs"[^>]*role="tablist"[\s\S]*?id="tab-new"[\s\S]*?<\/div>/,
+    );
+    expect(css).toMatch(
+      /\.tabstrip-scroll\s*\{[\s\S]*?display:\s*flex;[\s\S]*?overflow-x:\s*auto;/,
+    );
+    expect(css).toMatch(
+      /\.tabs\s*\{[\s\S]*?flex:\s*0 0 auto;[\s\S]*?overflow:\s*visible;/,
+    );
+    expect(app).toContain('document.getElementById("tab-new").scrollIntoView');
+  });
+
+  it("은은한 그린 광택을 선택 상태와 지도 표면에만 연결한다", () => {
+    const light = css.match(/^:root\s*\{([\s\S]*?)^\}/m)?.[1] ?? "";
+    const dark =
+      css.match(/:root\[data-theme="dark"\]\s*\{([\s\S]*?)^\}/m)?.[1] ?? "";
+    const alpha = (block) =>
+      Number(
+        block.match(
+          /--map-bloom:\s*rgba\([^,]+,[^,]+,[^,]+,\s*([\d.]+)\)/,
+        )?.[1],
+      );
+
+    for (const block of [light, dark]) {
+      expect(alpha(block)).toBeGreaterThan(0);
+      expect(alpha(block)).toBeLessThanOrEqual(0.1);
+      expect(block).toContain("--selected-surface:");
+      expect(block).toContain("--surface-highlight:");
+    }
+    expect(css).toMatch(
+      /\.map-wrap\s*\{[\s\S]*?radial-gradient\([^}]*var\(--map-bloom\)/,
+    );
+    expect(css).toMatch(
+      /\.tab-wrap\.active\s*\{[\s\S]*?background:\s*var\(--selected-surface\)/,
+    );
+    expect(css).not.toContain("shimmer");
+  });
+
+  it("북마크 토글·목록·기기 저장·탭 간 동기화를 연결한다", () => {
+    expect(html).toContain('id="side-bookmarks"');
+    expect(html).toContain('id="bookmark-count"');
+    expect(app).toContain('BOOKMARK_KEY = "helix.bookmarks"');
+    expect(app).toContain("parseBookmarkIds");
+    expect(app).toContain("toggleBookmark");
+    expect(app).toContain("selectBookmarkItems");
+    expect(app).toContain("localStorage.getItem(BOOKMARK_KEY)");
+    expect(app).toContain("localStorage.setItem(BOOKMARK_KEY");
+    expect(app).toContain('event.key === BOOKMARK_KEY');
+    expect(app).toContain('data-bookmark-id="');
+    expect(app).toContain("data-bookmark-remove");
+    expect(app).toContain('aria-pressed="false"');
+    expect(app).toContain('bookmarks: renderBookmarks');
+    expect(app).toMatch(
+      /bookmarkButton\.addEventListener\("click"[\s\S]*?setBookmarked\(s\.id,[\s\S]*?paintBookmarkButton/,
+    );
+    expect(app).toMatch(
+      /renderBookmarks[\s\S]*?selectBookmarkItems\(bookmarkIds, subjects\)[\s\S]*?subjectRow\(subject\)/,
+    );
+    expect(app).toMatch(
+      /syncBookmarkCount\(subjects\)[\s\S]*?knownSubjectIds = new Set/,
+    );
+    expect(css).toContain(".bookmark-toggle[aria-pressed=\"true\"]");
+    expect(css).toContain('@media (forced-colors: active)');
+    expect(css).toContain("--text: CanvasText");
+  });
 });

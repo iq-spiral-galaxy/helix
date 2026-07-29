@@ -1,9 +1,12 @@
 import { describe, expect, it } from "vitest";
 import {
   filterOpenQuestions,
+  parseBookmarkIds,
   selectHomeFocus,
+  selectBookmarkItems,
   sortOpenQuestions,
   sortSubjects,
+  toggleBookmark,
 } from "../public/experience.js";
 
 const subjects = [
@@ -86,6 +89,31 @@ describe("Helix viewer experience model", () => {
     ]);
     expect(filterOpenQuestions(questions, "최근", titles)).toEqual([
       questions[0],
+    ]);
+  });
+
+  it("오염되거나 중복된 북마크 저장값을 안전하게 정규화한다", () => {
+    expect(parseBookmarkIds(null)).toEqual([]);
+    expect(parseBookmarkIds("잘못된 JSON")).toEqual([]);
+    expect(parseBookmarkIds('{"id":"a"}')).toEqual([]);
+    expect(parseBookmarkIds('["a","a","",42," b "]')).toEqual(["a", "b"]);
+  });
+
+  it("북마크를 추가·삭제하며 원본 배열을 보존한다", () => {
+    const saved = ["a", "b"];
+    expect(toggleBookmark(saved, "c")).toEqual(["c", "a", "b"]);
+    expect(toggleBookmark(saved, "a")).toEqual(["b"]);
+    expect(saved).toEqual(["a", "b"]);
+  });
+
+  it("유효한 북마크만 저장 순서대로 인코딩된 나선 경로에 연결한다", () => {
+    const bookmarked = selectBookmarkItems(
+      ["deeper", "missing", "a/b"],
+      [...subjects, { id: "a/b", title: "Slash" }],
+    );
+    expect(bookmarked.map(({ id, route }) => ({ id, route }))).toEqual([
+      { id: "deeper", route: "#/s/deeper" },
+      { id: "a/b", route: "#/s/a%2Fb" },
     ]);
   });
 });
