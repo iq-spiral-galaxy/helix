@@ -106,13 +106,14 @@ async function buildConnectionIndex(store: FileHelixStore): Promise<ConnIndex> {
   return { all, byId, groups, ungrouped, outE, inE, idf };
 }
 
-export function createApp(store: FileHelixStore): Hono {
+export function createApp(
+  store: FileHelixStore,
+  options: { publicDir?: string } = {},
+): Hono {
   const app = new Hono();
-  const publicDir = join(
-    dirname(fileURLToPath(import.meta.url)),
-    "..",
-    "public",
-  );
+  const publicDir =
+    options.publicDir ??
+    join(dirname(fileURLToPath(import.meta.url)), "..", "public");
 
   // 한 페이지 로드가 /roadmaps + 다수의 /connections 를 동시에 부르므로 짧은 TTL로 묶는다.
   // 뷰어는 read-only이고 데이터는 외부 편집으로만 바뀌므로 2초 staleness는 무해.

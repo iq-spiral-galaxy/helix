@@ -64,6 +64,44 @@ export function selectBookmarkItems(ids = [], subjects = []) {
 }
 
 /**
+ * 사이드바는 전체 트리를 미리 펼치지 않고, 입력한 동안에만 Subject를 평면 검색한다.
+ */
+export function filterSidebarSubjects(subjects = [], query = "", limit = 30) {
+  const needle = text(query).trim().toLocaleLowerCase();
+  if (!needle) return [];
+  return subjects
+    .map((subject) => {
+      const title = text(subject.title).replace(/^\d+[.)]\s*/, "");
+      const titleIndex = title.toLocaleLowerCase().indexOf(needle);
+      const tags = (subject.tags ?? []).map(text).join(" ").toLocaleLowerCase();
+      const idIndex = text(subject.id).toLocaleLowerCase().indexOf(needle);
+      if (titleIndex === -1 && !tags.includes(needle) && idIndex === -1) return null;
+      return {
+        id: subject.id,
+        title,
+        route: `#/s/${encodeURIComponent(subject.id)}`,
+        score:
+          titleIndex === 0
+            ? 0
+            : titleIndex > 0
+              ? 1
+              : tags.includes(needle)
+                ? 2
+                : 3,
+        lastTouched: subject.lastTouched ?? "",
+      };
+    })
+    .filter(Boolean)
+    .sort(
+      (a, b) =>
+        a.score - b.score ||
+        compareDateDesc(a.lastTouched, b.lastTouched) ||
+        compareText(a.title, b.title),
+    )
+    .slice(0, Math.max(0, limit));
+}
+
+/**
  * 홈에서 가장 먼저 보여줄 "다음 관찰"을 고른다.
  * 오래 열린 질문을 우선해 Helix의 핵심 루프(질문 → 다음 Layer)를 드러내고,
  * 질문이 없으면 가장 최근에 움직인 나선을 이어서 보여준다.

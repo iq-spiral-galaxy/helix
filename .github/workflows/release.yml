@@ -1,0 +1,131 @@
+name: Desktop release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "22"
+      - uses: pnpm/action-setup@v6
+        with:
+          run_install: false
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Verify tag and product version
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: node scripts/verify-release-version.mjs "${{ github.ref_name }}"
+      - name: Test
+        run: pnpm test
+      - name: Build
+        run: pnpm build
+
+  package:
+    needs: verify
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest
+            target: mac
+            artifact: macos
+          - os: windows-latest
+            target: win
+            artifact: windows
+          - os: ubuntu-latest
+            target: linux
+            artifact: linux
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "22"
+      - uses: pnpm/action-setup@v6
+        with:
+          run_install: false
+      - name: Cache Electron downloads
+        uses: actions/cache@v6
+        with:
+          path: |
+            ~/.cache/electron
+            ~/.cache/electron-builder
+            ~/Library/Caches/electron
+            ~/Library/Caches/electron-builder
+            ~\AppData\Local\electron\Cache
+            ~\AppData\Local\electron-builder\Cache
+          key: ${{ runner.os }}-electron-43.2.0-${{ hashFiles('pnpm-lock.yaml') }}
+          restore-keys: ${{ runner.os }}-electron-43.2.0-
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Build application
+        run: pnpm build
+      - name: Package desktop application
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: "false"
+        run: pnpm exec electron-builder --${{ matrix.target }} --publish never
+      - name: Upload packaged files
+        uses: actions/upload-artifact@v7
+        with:
+          name: helix-${{ matrix.artifact }}
+          if-no-files-found: error
+          path: |
+            release/*.dmg
+            release/*.exe
+            release/*.exe.blockmap
+            release/*.AppImage
+
+  publish:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: package
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: helix-*
+          path: assembled
+          merge-multiple: true
+      - name: Add stable download aliases and checksums
+        shell: bash
+        run: |
+          cp assembled/Helix-*-arm64.dmg assembled/Helix-latest-arm64.dmg
+          cp assembled/Helix-*-x64.dmg assembled/Helix-latest.dmg
+          cp assembled/Helix-Setup-*-x64.exe assembled/Helix-latest-Setup.exe
+          cp assembled/Helix-*-x64.AppImage assembled/Helix-latest.AppImage
+          cp electron/build/icon.png assembled/Helix.png
+          cp scripts/install.sh assembled/install.sh
+          cp scripts/install.ps1 assembled/install.ps1
+          cd assembled
+          sha256sum Helix* install.sh install.ps1 > SHA256SUMS.txt
+      - name: Prepare release notes
+        shell: bash
+        run: |
+          sed "s/__TAG__/${{ github.ref_name }}/g" scripts/release-notes.md > RELEASE_NOTES.md
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v3
+        with:
+          name: Helix ${{ github.ref_name }}
+          body_path: RELEASE_NOTES.md
+          generate_release_notes: true
+          append_body: true
+          fail_on_unmatched_files: true
+          files: |
+            assembled/*

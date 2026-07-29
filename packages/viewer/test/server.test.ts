@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { mkdtemp } from "node:fs/promises";
+import { mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { FileHelixStore } from "@iq-helix/core";
@@ -20,7 +20,12 @@ describe("viewer API", () => {
 
     const list = await (await app.request("/api/subjects")).json();
     expect(list).toHaveLength(1);
-    expect(list[0]).toMatchObject({ id: "mvcc", openQuestionCount: 1 });
+    expect(list[0]).toMatchObject({
+      id: "mvcc",
+      tags: ["db"],
+      lastTouched: "2026-06-01",
+      openQuestionCount: 1,
+    });
 
     const subject = await (await app.request("/api/subjects/mvcc")).json();
     expect(subject.layers).toHaveLength(1);
@@ -97,5 +102,18 @@ describe("viewer API", () => {
         ],
       }),
     ]);
+  });
+
+  it("데스크톱 번들이 주입한 public 디렉터리에서 정적 화면을 제공한다", async () => {
+    const root = await mkdtemp(join(tmpdir(), "helix-"));
+    const publicDir = await mkdtemp(join(tmpdir(), "helix-public-"));
+    await writeFile(join(publicDir, "index.html"), "<h1>Desktop Helix</h1>", "utf8");
+
+    const response = await createApp(new FileHelixStore(root), {
+      publicDir,
+    }).request("/");
+
+    expect(response.status).toBe(200);
+    expect(await response.text()).toContain("Desktop Helix");
   });
 });

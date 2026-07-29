@@ -35,6 +35,7 @@ export function mount(canvas, data, opts = {}) {
   const nodeRoute = opts.nodeRoute ?? ((id) => `#/s/${encodeURIComponent(id)}`);
   // 나선(그룹) 자체를 클릭해 안으로 들어가는 라우트 — 전체 지도에서만 주입됨
   const groupRoute = opts.groupRoute ?? null;
+  const parentRoute = opts.parentRoute ?? null;
   const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
   let P = readPalette();
 
@@ -207,6 +208,15 @@ export function mount(canvas, data, opts = {}) {
   mapControls.className = "map-controls";
   mapControls.setAttribute("role", "group");
   mapControls.setAttribute("aria-label", "지도 제어");
+  if (parentRoute) {
+    const parentLink = document.createElement("a");
+    parentLink.className = "map-control-back";
+    parentLink.href = parentRoute;
+    parentLink.setAttribute("aria-label", "전체 나선 지도로 돌아가기");
+    parentLink.innerHTML =
+      '<span aria-hidden="true">←</span><span class="map-control-back-full">전체 지도</span><span class="map-control-back-compact">전체</span>';
+    mapControls.append(parentLink);
+  }
   const zoomOut = document.createElement("button");
   zoomOut.type = "button";
   zoomOut.textContent = "−";
@@ -721,13 +731,13 @@ function readPalette() {
   const css = getComputedStyle(document.documentElement);
   const g = (name, fb) => css.getPropertyValue(name).trim() || fb;
   return {
-    paper: g("--paper", "#f7f8f5"),
-    text: g("--text", "#19251e"),
-    soft: g("--text-soft", "#4d5e53"),
-    faint: g("--text-faint", "#5b6c61"),
-    ghost: g("--text-ghost", "rgba(25,37,30,0.36)"),
-    accent: g("--accent", "#1f6b49"),
-    link: g("--link", "#346b51"),
+    paper: g("--paper", "#f7f7f6"),
+    text: g("--text", "#232423"),
+    soft: g("--text-soft", "#555755"),
+    faint: g("--text-faint", "#656865"),
+    ghost: g("--map-path", "#7a7d7a"),
+    accent: g("--accent", "#1f7147"),
+    link: g("--link", "#356b4d"),
   };
 }
 function displayTitle(t) { return String(t).replace(/^\d+[.)]\s*/, ""); }

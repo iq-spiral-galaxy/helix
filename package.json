@@ -1,9 +1,36 @@
 {
   "name": "iq-helix",
+  "version": "0.2.0",
+  "description": "A local desktop notebook for tracing how understanding evolves.",
   "private": true,
+  "type": "module",
+  "main": "electron/dist/main.js",
   "scripts": {
-    "build": "pnpm -r build",
-    "test": "pnpm -r test"
+    "build:packages": "pnpm -r build",
+    "build": "pnpm build:packages && pnpm desktop:bundle",
+    "test": "pnpm build:packages && pnpm -r test && pnpm desktop:test",
+    "desktop:typecheck": "tsc -p electron/tsconfig.json",
+    "desktop:test": "pnpm desktop:typecheck && node --test electron/test/*.test.mjs",
+    "desktop:bundle": "node scripts/build-desktop.mjs",
+    "desktop:dev": "pnpm build && electron .",
+    "desktop:dir": "pnpm build && electron-builder --dir",
+    "desktop:dist": "pnpm build && electron-builder",
+    "desktop:dist:mac": "pnpm build && electron-builder --mac",
+    "desktop:dist:win": "pnpm build && electron-builder --win",
+    "desktop:dist:linux": "pnpm build && electron-builder --linux"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/iq-spiral-galaxy/helix.git"
+  },
+  "author": "iq",
+  "license": "MIT",
+  "devDependencies": {
+    "@types/node": "22.19.20",
+    "electron": "43.2.0",
+    "electron-builder": "26.15.3",
+    "esbuild": "0.28.1",
+    "typescript": "5.9.3"
   },
   "packageManager": "pnpm@11.1.1+sha512.d1fdf5f73c617b64fa1a56a81c3c8dfe0e966e33a6010aa256b517ae77be21d93e05affc0de1a83b0e4f29d569f68b446ae8f068cd7247c0bb3df0fb4d7bdf9a"
 }

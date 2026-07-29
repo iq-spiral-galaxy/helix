@@ -4,56 +4,27 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Helix</title>
-  <meta name="theme-color" id="theme-color" content="#f7f8f5" />
-  <script>
-    (() => {
-      try {
-        const theme = localStorage.getItem("helix.theme");
-        const resolvedTheme = theme === "dark" ? "dark" : "light";
-        document.documentElement.dataset.theme = resolvedTheme;
-        document.getElementById("theme-color").content =
-          resolvedTheme === "dark" ? "#1b2420" : "#f7f8f5";
-        if (localStorage.getItem("helix.sidebar") === "collapsed") {
-          document.documentElement.dataset.sidebar = "collapsed";
-        }
-      } catch {
-        document.documentElement.dataset.theme = "light";
-      }
-    })();
-  </script>
+  <meta name="theme-color" id="theme-color" content="#f7f7f6" />
+  <meta http-equiv="Content-Security-Policy"
+    content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; font-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'" />
+  <script src="/theme-init.js"></script>
   <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
-  <link
-    rel="stylesheet"
-    href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css"
-  />
-  <link rel="preconnect" href="https://fonts.googleapis.com" />
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link
-    href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&display=swap"
-    rel="stylesheet"
-  />
   <link rel="stylesheet" href="/styles.css" />
 </head>
 <body>
   <div class="shell">
     <aside class="sidebar" id="side-panel" aria-label="Helix 탐색">
-      <a class="brand" href="#/">
-        <svg class="brand-mark" width="20" height="20" viewBox="0 0 20 20" aria-hidden="true">
-          <g fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M6 2.5c0 3.2 8 3.2 8 6.4s-8 3.2-8 6.4c0 1 .8 1.7 2 2.2" />
-            <path opacity=".48" d="M14 2.5c0 3.2-8 3.2-8 6.4s8 3.2 8 6.4c0 1-.8 1.7-2 2.2" />
-            <path opacity=".25" d="M6.8 5.7h6.4M6.8 12.1h6.4" />
-          </g>
-        </svg>
-        <span class="brand-name">Helix</span>
-      </a>
-      <button class="side-search" id="search-trigger" type="button" aria-label="검색">
+      <label class="side-search" for="side-search-input">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true">
           <circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/>
         </svg>
-        <span>검색</span>
+        <input id="side-search-input" type="search" placeholder="나선 검색…"
+          autocomplete="off" spellcheck="false" role="combobox"
+          aria-label="나선 검색" aria-autocomplete="list"
+          aria-controls="side-list" aria-describedby="side-search-status"
+          aria-expanded="false" />
         <kbd>⌘K</kbd>
-      </button>
+      </label>
       <nav class="side-nav">
         <a href="#/" data-nav="subjects">나선 일지</a>
         <a href="#/map" data-nav="map">나선 지도</a>
@@ -63,22 +34,24 @@
           <span class="count" id="bookmark-count" aria-label="저장한 북마크 수"></span>
         </a>
       </nav>
-      <div class="side-list" id="side-list"></div>
+      <div class="side-search-status" id="side-search-status" role="status" aria-live="polite"></div>
+      <div class="side-list" id="side-list" role="listbox" aria-label="나선 검색 결과" hidden></div>
       <button class="side-settings" id="settings-trigger" type="button"
         aria-haspopup="dialog" aria-controls="settings-dialog" aria-expanded="false">
         설정
       </button>
     </aside>
-    <button class="sidebar-scrim" id="sidebar-scrim" type="button" aria-label="나선 목록 닫기" hidden></button>
+    <button class="sidebar-scrim" id="sidebar-scrim" type="button" aria-label="탐색 닫기" hidden></button>
     <div class="workspace">
       <header class="mobile-topbar">
         <button class="mobile-menu" id="sidebar-toggle" type="button" aria-controls="side-panel" aria-expanded="false">
           <span class="menu-lines" aria-hidden="true"><i></i><i></i></span>
-          <span class="sr-only">나선 목록 열기</span>
+          <span class="sr-only">탐색 열기</span>
         </button>
         <a class="mobile-brand" href="#/" aria-label="Helix 홈">Helix</a>
         <span class="mobile-page" id="mobile-page">나선 일지</span>
-        <button class="mobile-search" id="mobile-search" type="button" aria-label="전체 검색 열기">
+        <button class="mobile-search" id="mobile-search" type="button"
+          aria-label="나선 검색 열기" aria-controls="side-panel" aria-expanded="false">
           <span aria-hidden="true">⌕</span>
         </button>
       </header>
@@ -108,7 +81,10 @@
       <a href="#/" data-nav="subjects"><span aria-hidden="true">◉</span><b>일지</b></a>
       <a href="#/map" data-nav="map"><span aria-hidden="true">⌁</span><b>지도</b></a>
       <a href="#/q" data-nav="questions"><span aria-hidden="true">?</span><b>질문</b></a>
-      <button id="mobile-bottom-search" type="button"><span aria-hidden="true">⌕</span><b>검색</b></button>
+      <button id="mobile-bottom-search" type="button"
+        aria-controls="side-panel" aria-expanded="false">
+        <span aria-hidden="true">⌕</span><b>검색</b>
+      </button>
     </nav>
   </div>
   <dialog class="settings-dialog" id="settings-dialog" role="dialog"
@@ -133,33 +109,33 @@
           </label>
         </div>
       </fieldset>
+      <section class="desktop-settings" id="desktop-settings" hidden>
+        <header class="desktop-settings-head">
+          <h3>데스크톱 앱</h3>
+          <span id="desktop-version"></span>
+        </header>
+        <div class="desktop-update-row">
+          <div>
+            <strong>앱 업데이트</strong>
+            <p id="desktop-update-status" role="status" aria-live="polite">최신 버전을 확인합니다.</p>
+          </div>
+          <button class="settings-action primary" id="desktop-update-button" type="button">
+            업데이트 확인
+          </button>
+        </div>
+        <div class="desktop-data-row">
+          <div>
+            <strong>데이터 폴더</strong>
+            <code id="desktop-data-root"></code>
+          </div>
+          <div class="desktop-data-actions">
+            <button class="settings-action" id="desktop-data-reveal" type="button">열기</button>
+            <button class="settings-action" id="desktop-data-change" type="button">변경</button>
+          </div>
+        </div>
+      </section>
     </div>
   </dialog>
-  <div class="search-modal" id="search-modal" role="dialog" aria-modal="true" aria-labelledby="search-title" hidden>
-    <div class="search-panel">
-      <h2 class="sr-only" id="search-title">Helix 전체 검색</h2>
-      <div class="search-head">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true">
-          <circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/>
-        </svg>
-        <input
-          id="search-input"
-          type="text"
-          placeholder="나선 · Layer · 질문 검색…"
-          autocomplete="off"
-          spellcheck="false"
-          role="combobox"
-          aria-label="Helix 전체 검색어"
-          aria-autocomplete="list"
-          aria-controls="search-results"
-          aria-expanded="false"
-        />
-        <kbd>esc</kbd>
-        <button class="search-close" id="search-close" type="button" aria-label="검색 닫기">×</button>
-      </div>
-      <div class="search-results" id="search-results" role="listbox" aria-label="검색 결과"></div>
-    </div>
-  </div>
   <script src="/app.js" type="module"></script>
 </body>
 </html>

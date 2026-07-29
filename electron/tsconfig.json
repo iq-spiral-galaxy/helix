@@ -1,0 +1,15 @@
+{
+  "extends": "../tsconfig.base.json",
+  "compilerOptions": {
+    "allowJs": true,
+    "checkJs": false,
+    "noEmit": true,
+    "baseUrl": "..",
+    "types": ["node"],
+    "paths": {
+      "@iq-helix/core": ["packages/core/dist/index.d.ts"],
+      "@iq-helix/viewer": ["packages/viewer/dist/index.d.ts"]
+    }
+  },
+  "include": ["main.ts", "update-core.mjs"]
+}
