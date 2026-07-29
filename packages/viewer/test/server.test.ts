@@ -36,6 +36,12 @@ describe("viewer API", () => {
 
     const html = await (await app.request("/")).text();
     expect(html).toContain("Helix");
+
+    const unknownApi = await app.request("/api/does-not-exist");
+    expect(unknownApi.status).toBe(404);
+    expect(await unknownApi.json()).toEqual({
+      error: "존재하지 않는 API 엔드포인트",
+    });
   });
 
   it("/api/graph가 노드 + 사전 솎인 이웃을 반환한다 (로드맵 형제 연결)", async () => {
@@ -72,6 +78,24 @@ describe("viewer API", () => {
     expect(stub.roadmapTitle).toBe("Mocking");
     expect(graph.roadmaps).toEqual([
       expect.objectContaining({ id: "unit-testing/mocking", size: 2 }),
+    ]);
+
+    const hierarchy = await (
+      await createApp(store).request("/api/roadmaps")
+    ).json();
+    expect(hierarchy.repositories).toEqual([
+      expect.objectContaining({
+        id: "unit-testing",
+        title: "Unit Testing",
+        subjectCount: 2,
+        chapters: [
+          expect.objectContaining({
+            id: "unit-testing/mocking",
+            title: "Mocking",
+            subjectIds: ["spy", "stub"],
+          }),
+        ],
+      }),
     ]);
   });
 });

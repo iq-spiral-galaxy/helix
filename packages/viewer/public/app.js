@@ -1,15 +1,33 @@
+import {
+  filterOpenQuestions,
+  selectHomeFocus,
+  sortOpenQuestions,
+  sortSubjects,
+} from "/experience.js";
+
 const app = document.getElementById("app");
 const routes = { "": renderHome, q: renderQuestions, s: renderTimeline, map: renderMap };
 let mapHandle = null; // 나선 지도(#/map) 캔버스 정리 훅 (라우트 전환 시 destroy)
 let mapToken = 0; // renderMap 비동기 import 중 라우트가 바뀌면 mount 취소
+let routeToken = 0; // 모든 라우트의 느린 응답이 최신 화면을 덮지 못하게 하는 세대 번호
+let strandObserver = null;
+let strandFrame = 0;
 
 /* ---------- 탭 (Obsidian풍 워크스페이스) ---------- */
 
 let tabs = null;
 let activeTab = 0;
 try {
-  tabs = JSON.parse(sessionStorage.getItem("helix-tabs") ?? "null");
-  activeTab = Number(sessionStorage.getItem("helix-tab-active") ?? 0);
+  tabs = JSON.parse(
+    localStorage.getItem("helix-tabs") ??
+      sessionStorage.getItem("helix-tabs") ??
+      "null",
+  );
+  activeTab = Number(
+    localStorage.getItem("helix-tab-active") ??
+      sessionStorage.getItem("helix-tab-active") ??
+      0,
+  );
 } catch { /* 세션 복원 실패 시 기본 탭 */ }
 let subjectTitles = {}; // initSidebar가 채움 — 새 탭 제목 즉시 결정용
 
@@ -17,7 +35,7 @@ let subjectTitles = {}; // initSidebar가 채움 — 새 탭 제목 즉시 결�
 function titleForRoute(hash) {
   const [, rawPage = "", rawId] = (hash || "#/").split("/");
   const page = rawPage.split("?")[0];
-  if (page === "q") return "남은 질문";
+  if (page === "q") return "열린 질문";
   if (page === "map") {
     const id = decodeURIComponent((rawId ?? "").split("?")[0]);
     return id ? repoLabelOf(id) : "나선 지도";
@@ -32,19 +50,29 @@ function titleForRoute(hash) {
 if (!Array.isArray(tabs) || tabs.length === 0) tabs = [{ route: "#/", title: "나선 일지" }];
 activeTab = Math.min(Math.max(activeTab || 0, 0), tabs.length - 1);
 if (location.hash) tabs[activeTab].route = location.hash; // 딥링크 우선
+else if (tabs[activeTab]?.route?.startsWith("#/")) {
+  history.replaceState(null, "", tabs[activeTab].route);
+}
 
 function saveTabs() {
   sessionStorage.setItem("helix-tabs", JSON.stringify(tabs));
   sessionStorage.setItem("helix-tab-active", String(activeTab));
+  try {
+    localStorage.setItem("helix-tabs", JSON.stringify(tabs));
+    localStorage.setItem("helix-tab-active", String(activeTab));
+  } catch { /* 저장 공간 제한 시 현재 세션만 유지 */ }
 }
 
 function renderTabs() {
   document.getElementById("tabs").innerHTML = tabs
     .map(
       (t, i) => `
-      <div class="tab${i === activeTab ? " active" : ""}" data-tab="${i}" title="${esc(t.title)}"
-           role="tab" tabindex="0" aria-selected="${i === activeTab}">
-        <span class="tab-title">${esc(t.title)}</span>
+      <div class="tab-wrap${i === activeTab ? " active" : ""}">
+        <button class="tab${i === activeTab ? " active" : ""}" data-tab="${i}" title="${esc(t.title)}"
+             type="button" role="tab" tabindex="${i === activeTab ? "0" : "-1"}"
+             aria-selected="${i === activeTab}" aria-controls="app">
+          <span class="tab-title">${esc(t.title)}</span>
+        </button>
         <button class="tab-close" data-close="${i}" aria-label="탭 닫기" tabindex="-1">
           <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg>
         </button>
@@ -116,6 +144,17 @@ document.getElementById("tabs").addEventListener("keydown", (e) => {
   if (e.key === "Enter" || e.key === " ") {
     e.preventDefault();
     selectTab(Number(tab.dataset.tab));
+  } else if (e.key === "ArrowRight" || e.key === "ArrowLeft") {
+    e.preventDefault();
+    const delta = e.key === "ArrowRight" ? 1 : -1;
+    const next = (Number(tab.dataset.tab) + delta + tabs.length) % tabs.length;
+    selectTab(next);
+    document.querySelector(`.tab[data-tab="${next}"]`)?.focus();
+  } else if (e.key === "Home" || e.key === "End") {
+    e.preventDefault();
+    const next = e.key === "Home" ? 0 : tabs.length - 1;
+    selectTab(next);
+    document.querySelector(`.tab[data-tab="${next}"]`)?.focus();
   } else if (e.key === "Backspace" || e.key === "Delete") {
     e.preventDefault();
     closeTab(Number(tab.dataset.tab));
@@ -137,34 +176,56 @@ document.addEventListener("click", (e) => {
 /* ---------- 라우팅 ---------- */
 
 window.addEventListener("hashchange", route);
-route();
-initSidebar();
 
 async function route() {
+  const token = ++routeToken;
   if (mapHandle) { mapHandle.destroy(); mapHandle = null; } // 캔버스/리스너 누수 방지
+  if (strandObserver) { strandObserver.disconnect(); strandObserver = null; }
+  cancelAnimationFrame(strandFrame);
+  strandFrame = 0;
   const hash = location.hash || "#/";
   tabs[activeTab].route = hash;
   const [, rawPage = "", id] = hash.split("/");
   const page = rawPage.split("?")[0]; // #/map?focus=x 처럼 쿼리가 page에 붙는 경우 분리
   const handler = routes[page] ?? renderHome;
+  app.dataset.page = page || "home";
   tabs[activeTab].title = titleForRoute(hash);
   renderTabs();
   saveTabs();
+  try { localStorage.setItem("helix.lastRoute", hash); } catch { /* 저장 실패는 무시 */ }
   markSidebar();
+  closeMobileSidebar(false);
   // subject 페이지는 로드 후 setTabTitle이 제목을 채운다 — 그 전까지는 일반 제목
   document.title = page === "s" ? "Helix" : `${tabs[activeTab].title} — Helix`;
   const ws = document.querySelector(".workspace");
   if (ws) ws.scrollTop = 0;
+  window.scrollTo({ top: 0 });
+  app.setAttribute("aria-busy", "true");
   app.innerHTML = `<p class="page-sub">불러오는 중…</p>`;
   try {
-    await handler(decodeURIComponent((id ?? "").split("?")[0]));
+    await handler(decodeURIComponent((id ?? "").split("?")[0]), token);
+    if (token !== routeToken) return;
+    app.removeAttribute("aria-busy");
+    const heading = app.querySelector("h1");
+    if (heading) {
+      heading.tabIndex = -1;
+      heading.focus({ preventScroll: true });
+    }
+    document.getElementById("route-status").textContent =
+      `${tabs[activeTab].title} 화면을 열었습니다.`;
   } catch (err) {
+    if (token !== routeToken) return;
+    app.removeAttribute("aria-busy");
     app.innerHTML = `<div class="empty">불러오기 실패: ${esc(String(err))}</div>`;
     tabs[activeTab].title = "불러오기 실패";
     renderTabs();
     saveTabs();
     document.title = "불러오기 실패 — Helix";
   }
+}
+
+function routeIsCurrent(token) {
+  return token === routeToken;
 }
 
 /* ---------- 사이드바 ---------- */
@@ -193,8 +254,6 @@ async function initSidebar() {
       if (t.title === "…") { t.title = titleForRoute(t.route); fixed = true; }
     }
     if (fixed) { renderTabs(); saveTabs(); }
-    const openTotal = subjects.reduce((n, s) => n + s.openQuestionCount, 0);
-    const layerTotal = subjects.reduce((n, s) => n + s.layerCount, 0);
     const collapsed = readCollapsed();
 
     const itemHTML = (id) => {
@@ -203,31 +262,60 @@ async function initSidebar() {
       return `
         <a class="side-item" data-sid="${esc(id)}" href="#/s/${encodeURIComponent(id)}" title="${esc(displayTitle(s.title))}">
           <span class="si-title">${esc(displayTitle(s.title))}</span>
-          ${s.openQuestionCount ? `<span class="si-oq">${s.openQuestionCount}</span>` : ""}
+          ${s.openQuestionCount ? `<span class="si-oq" aria-label="열린 질문 ${s.openQuestionCount}개"></span>` : ""}
         </a>`;
     };
-    const groupHTML = (key, label, ids) => {
+    const chapterHTML = (chapter) => `
+      <div class="side-chapter">
+        <a class="side-chapter-head" href="#/map/${encodeURIComponent(chapter.repositoryId)}?chapter=${encodeURIComponent(chapter.id)}">
+          <span>${esc(chapter.title)}</span>
+        </a>
+        <div class="side-chapter-items">${chapter.subjectIds.map(itemHTML).join("")}</div>
+      </div>`;
+    const groupHTML = (key, label, chapters) => {
       const open = !collapsed[key];
       return `
         <section class="side-group" data-rm="${esc(key)}">
           <button class="side-group-head" aria-expanded="${open}">
             <span class="disc">${open ? "▾" : "▸"}</span>
             <span class="rm-label">${esc(label)}</span>
-            <span class="rm-count">${ids.length}</span>
           </button>
-          <div class="side-group-body"${open ? "" : " hidden"}>${ids.map(itemHTML).join("")}</div>
+          <div class="side-group-body"${open ? "" : " hidden"}>${chapters.map(chapterHTML).join("")}</div>
         </section>`;
     };
 
-    // 형제가 있는 로드맵(2개+)만 그룹으로. 1개짜리 로드맵은 미분류와 함께 "기타"로 모아 사이드바를 단순하게.
-    const multi = grouping.roadmaps.filter((r) => r.subjectIds.length >= 2);
-    const misc = [
-      ...grouping.roadmaps.filter((r) => r.subjectIds.length < 2).flatMap((r) => r.subjectIds),
-      ...grouping.ungrouped,
-    ];
+    // API 구버전에도 내성을 유지하면서 Repo > Chapter > Subject 계층을 복원한다.
+    const repositories = grouping.repositories ?? (() => {
+      const byRepo = new Map();
+      for (const chapter of grouping.roadmaps ?? []) {
+        const repositoryId = repoKeyOf(chapter.id);
+        if (!byRepo.has(repositoryId)) {
+          byRepo.set(repositoryId, {
+            id: repositoryId,
+            title: repoLabelOf(repositoryId),
+            chapters: [],
+          });
+        }
+        byRepo.get(repositoryId).chapters.push({
+          ...chapter,
+          repositoryId,
+        });
+      }
+      return [...byRepo.values()];
+    })();
+    const miscChapters = grouping.ungrouped?.length
+      ? [{
+          id: "__misc",
+          repositoryId: "misc",
+          title: "분류되지 않은 나선",
+          subjectIds: grouping.ungrouped,
+        }]
+      : [];
     const html = [
-      ...multi.map((r) => groupHTML(r.id, r.title, r.subjectIds)),
-      misc.length ? groupHTML("__misc", "기타", misc) : "",
+      ...repositories.map((repo) =>
+        groupHTML(`repo:${repo.id}`, repo.title, repo.chapters),
+      ),
+      miscChapters.length ? groupHTML("__misc", "기타", miscChapters) : "",
     ].join("");
     const list = document.getElementById("side-list");
     list.innerHTML = html;
@@ -246,11 +334,6 @@ async function initSidebar() {
       localStorage.setItem("helix.roadmap.collapsed", JSON.stringify(next));
     });
 
-    document.getElementById("side-foot").innerHTML = `
-      <div class="sf"><b>${subjects.length}</b><span>나선</span></div>
-      <div class="sf"><b>${layerTotal}</b><span>layer</span></div>
-      <div class="sf"><b>${openTotal}</b><span>남은 질문</span></div>`;
-    if (openTotal) document.getElementById("q-count").textContent = openTotal;
     markSidebar();
   } catch {
     /* 사이드바는 장식 — 실패해도 본문 라우팅은 계속 동작 */
@@ -261,7 +344,7 @@ function markSidebar() {
   const [, rawPage = "", rawId] = location.hash.split("/");
   const page = rawPage.split("?")[0];
   const navFor = page === "q" ? "questions" : page === "map" ? "map" : "subjects";
-  for (const a of document.querySelectorAll(".side-nav a")) {
+  for (const a of document.querySelectorAll("[data-nav]")) {
     if (a.dataset.nav === navFor) {
       a.setAttribute("aria-current", "page");
     } else {
@@ -284,24 +367,95 @@ function markSidebar() {
       item.scrollIntoView({ block: "nearest" });
     }
   }
+  const mobilePage = document.getElementById("mobile-page");
+  if (mobilePage) mobilePage.textContent = titleForRoute(location.hash);
 }
+
+/* ---------- 모바일 탐색 ---------- */
+
+const mobileQuery = window.matchMedia("(max-width: 880px)");
+const sidePanel = document.getElementById("side-panel");
+const sideToggle = document.getElementById("sidebar-toggle");
+const sideScrim = document.getElementById("sidebar-scrim");
+
+function syncMobileSidebar() {
+  if (mobileQuery.matches) {
+    const open = sidePanel.classList.contains("mobile-open");
+    sidePanel.inert = !open;
+    sidePanel.setAttribute("aria-hidden", String(!open));
+    sideScrim.hidden = !open;
+    sideToggle.setAttribute("aria-expanded", String(open));
+  } else {
+    sidePanel.classList.remove("mobile-open");
+    sidePanel.inert = false;
+    sidePanel.removeAttribute("aria-hidden");
+    sideScrim.hidden = true;
+    sideToggle.setAttribute("aria-expanded", "false");
+  }
+}
+
+function openMobileSidebar() {
+  if (!mobileQuery.matches) return;
+  sidePanel.classList.add("mobile-open");
+  syncMobileSidebar();
+  sidePanel.querySelector(".side-search, .side-nav a")?.focus();
+}
+
+function closeMobileSidebar(restoreFocus = true) {
+  const wasOpen = sidePanel.classList.contains("mobile-open");
+  sidePanel.classList.remove("mobile-open");
+  syncMobileSidebar();
+  if (restoreFocus && wasOpen && mobileQuery.matches) sideToggle.focus();
+}
+
+sideToggle.addEventListener("click", () => {
+  sidePanel.classList.contains("mobile-open")
+    ? closeMobileSidebar()
+    : openMobileSidebar();
+});
+sideScrim.addEventListener("click", () => closeMobileSidebar());
+sidePanel.addEventListener("click", (event) => {
+  if (event.target.closest("a[href^='#/']")) closeMobileSidebar(false);
+});
+document.getElementById("mobile-search").addEventListener("click", openSearch);
+document.getElementById("mobile-bottom-search").addEventListener("click", openSearch);
+mobileQuery.addEventListener("change", syncMobileSidebar);
+syncMobileSidebar();
+void route();
+void initSidebar();
 
 /* ---------- 검색 (Cmd/Ctrl+K) ---------- */
 
 const searchModal = document.getElementById("search-modal");
 const searchInput = document.getElementById("search-input");
 const searchResults = document.getElementById("search-results");
+const searchClose = document.getElementById("search-close");
+const shell = document.querySelector(".shell");
 let searchIndex = null;
+let searchIndexPromise = null;
 let searchSel = 0;
 let searchHits = [];
+let searchQueryToken = 0;
 
 document.getElementById("search-trigger").addEventListener("click", openSearch);
+searchClose.addEventListener("click", closeSearch);
 document.addEventListener("keydown", (e) => {
+  if (!searchModal.hidden && e.key === "Tab") {
+    e.preventDefault();
+    if (e.shiftKey) {
+      (document.activeElement === searchInput ? searchClose : searchInput).focus();
+    } else {
+      (document.activeElement === searchClose ? searchInput : searchClose).focus();
+    }
+    return;
+  }
   if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
     e.preventDefault();
     searchModal.hidden ? openSearch() : closeSearch();
   } else if (e.key === "Escape" && !searchModal.hidden) {
     closeSearch();
+  } else if (e.key === "Escape" && sidePanel.classList.contains("mobile-open")) {
+    closeMobileSidebar();
   }
 });
 searchModal.addEventListener("click", (e) => {
@@ -312,15 +466,29 @@ let searchOpener = null; // 닫을 때 포커스를 되돌릴 직전 요소
 
 function openSearch() {
   searchOpener = document.activeElement;
+  closeMobileSidebar(false);
   searchModal.hidden = false;
+  shell.inert = true;
+  searchInput.setAttribute("aria-expanded", "true");
+  document.getElementById("search-trigger").setAttribute("aria-expanded", "true");
+  document.getElementById("mobile-search").setAttribute("aria-expanded", "true");
+  document.getElementById("mobile-bottom-search").setAttribute("aria-expanded", "true");
   searchInput.value = "";
-  searchResults.innerHTML = `<p class="sr-hint">입력하여 검색하기 — 나선 제목 · 태그 · layer 본문 · 질문</p>`;
+  searchInput.removeAttribute("aria-activedescendant");
+  searchResults.innerHTML = `<p class="sr-hint">입력하여 검색하기 — 나선 제목 · 태그 · Layer 본문 · 질문</p>`;
   searchInput.focus();
-  buildIndex(); // 백그라운드에서 미리 적재
+  void buildIndex().catch(() => {}); // 백그라운드에서 미리 적재
 }
 
 function closeSearch() {
+  searchQueryToken += 1;
   searchModal.hidden = true;
+  shell.inert = false;
+  searchInput.setAttribute("aria-expanded", "false");
+  searchInput.removeAttribute("aria-activedescendant");
+  document.getElementById("search-trigger").setAttribute("aria-expanded", "false");
+  document.getElementById("mobile-search").setAttribute("aria-expanded", "false");
+  document.getElementById("mobile-bottom-search").setAttribute("aria-expanded", "false");
   // 포커스 복귀 — 트리거(또는 직전 요소)로 되돌린다
   const back = searchOpener instanceof HTMLElement ? searchOpener : document.getElementById("search-trigger");
   back?.focus();
@@ -329,48 +497,75 @@ function closeSearch() {
 
 async function buildIndex() {
   if (searchIndex) return searchIndex;
-  const subjects = await getJSON("/api/subjects");
-  const details = await Promise.all(
-    subjects.map((s) => getJSON(`/api/subjects/${encodeURIComponent(s.id)}`)),
-  );
-  searchIndex = [];
-  for (const s of details) {
-    const title = displayTitle(s.title);
-    const base = `#/s/${encodeURIComponent(s.id)}`;
-    searchIndex.push({ kind: "나선", k: "subject", title, text: s.tags.join(" · "), route: base });
-    for (const l of s.layers) {
-      const body = l.content.sections
-        .map((sec) => `${sec.heading ?? ""} ${sec.body}`)
-        .join(" ");
-      searchIndex.push({
-        kind: `L${l.index}`,
-        k: "layer",
-        title,
-        text: plain(body).replace(/\s+/g, " ").trim(),
-        route: `${base}?layer=${l.index}`,
-      });
+  if (searchIndexPromise) return searchIndexPromise;
+  searchIndexPromise = (async () => {
+    const subjects = await getJSON("/api/subjects");
+    const details = await Promise.all(
+      subjects.map((s) => getJSON(`/api/subjects/${encodeURIComponent(s.id)}`)),
+    );
+    const next = [];
+    for (const s of details) {
+      const title = displayTitle(s.title);
+      const base = `#/s/${encodeURIComponent(s.id)}`;
+      next.push({ kind: "나선", k: "subject", title, text: s.tags.join(" · "), route: base });
+      for (const l of s.layers) {
+        const body = l.content.sections
+          .map((sec) => `${sec.heading ?? ""} ${sec.body}`)
+          .join(" ");
+        next.push({
+          kind: `L${l.index}`,
+          k: "layer",
+          title,
+          text: plain(body).replace(/\s+/g, " ").trim(),
+          route: `${base}?layer=${l.index}`,
+        });
+      }
+      for (const q of s.questions) {
+        next.push({
+          kind: q.status === "open" ? "질문" : "해소",
+          k: q.status === "open" ? "question" : "resolved",
+          title,
+          text: plain(q.text),
+          route: `${base}?layer=${q.raisedAtLayer}`,
+        });
+      }
     }
-    for (const q of s.questions) {
-      searchIndex.push({
-        kind: q.status === "open" ? "질문" : "해소",
-        k: q.status === "open" ? "question" : "resolved",
-        title,
-        text: plain(q.text),
-        route: `${base}?layer=${q.raisedAtLayer}`,
-      });
-    }
+    searchIndex = next;
+    return next;
+  })();
+  try {
+    return await searchIndexPromise;
+  } finally {
+    searchIndexPromise = null;
   }
-  return searchIndex;
 }
 
 searchInput.addEventListener("input", async () => {
+  const token = ++searchQueryToken;
   const q = searchInput.value.trim().toLowerCase();
   if (!q) {
     searchHits = [];
-    searchResults.innerHTML = `<p class="sr-hint">입력하여 검색하기 — 나선 제목 · 태그 · layer 본문 · 질문</p>`;
+    searchResults.removeAttribute("aria-busy");
+    searchInput.removeAttribute("aria-activedescendant");
+    searchResults.innerHTML = `<p class="sr-hint">입력하여 검색하기 — 나선 제목 · 태그 · Layer 본문 · 질문</p>`;
     return;
   }
-  const index = await buildIndex();
+  searchResults.setAttribute("aria-busy", "true");
+  let index;
+  try {
+    index = await buildIndex();
+  } catch {
+    if (token !== searchQueryToken || searchModal.hidden) return;
+    searchIndex = null;
+    searchResults.removeAttribute("aria-busy");
+    searchResults.innerHTML = `<p class="sr-hint">검색 색인을 불러오지 못했습니다. 다시 입력해 주세요.</p>`;
+    return;
+  }
+  if (
+    token !== searchQueryToken ||
+    searchModal.hidden ||
+    searchInput.value.trim().toLowerCase() !== q
+  ) return;
   const rank = { subject: 0, question: 1, resolved: 2, layer: 3 };
   searchHits = index
     .map((entry) => {
@@ -383,6 +578,7 @@ searchInput.addEventListener("input", async () => {
     .sort((a, b) => a.score - b.score)
     .slice(0, 30);
   searchSel = 0;
+  searchResults.removeAttribute("aria-busy");
   paintResults(q);
 });
 
@@ -414,6 +610,7 @@ function openHit(hit, newTab) {
 
 function paintResults(q) {
   if (searchHits.length === 0) {
+    searchInput.removeAttribute("aria-activedescendant");
     searchResults.innerHTML = `<p class="sr-hint">일치하는 결과가 없습니다.</p>`;
     return;
   }
@@ -422,7 +619,8 @@ function paintResults(q) {
       const inTitle = h.title.toLowerCase().indexOf(q);
       const snippet = inTitle !== -1 ? h.text.slice(0, 90) : excerpt(h.text, q);
       return `
-      <div class="sr-row${i === searchSel ? " sel" : ""}" data-hit="${i}">
+      <div class="sr-row${i === searchSel ? " sel" : ""}" data-hit="${i}"
+           id="search-option-${i}" role="option" aria-selected="${i === searchSel}">
         <span class="sr-kind k-${h.k}">${esc(h.kind)}</span>
         <span class="sr-main">
           <span class="sr-title">${inTitle !== -1 ? mark(h.title, q) : esc(h.title)}</span>
@@ -431,6 +629,7 @@ function paintResults(q) {
       </div>`;
     })
     .join("");
+  searchInput.setAttribute("aria-activedescendant", `search-option-${searchSel}`);
   searchResults.querySelector(".sr-row.sel")?.scrollIntoView({ block: "nearest" });
 }
 
@@ -449,36 +648,67 @@ function mark(text, q) {
 
 /* ---------- 나선 일지 (랜딩) ---------- */
 
-async function renderHome() {
-  const subjects = await getJSON("/api/subjects");
+async function renderHome(_id, token) {
+  const [subjects, questions] = await Promise.all([
+    getJSON("/api/subjects"),
+    getJSON("/api/questions"),
+  ]);
+  if (!routeIsCurrent(token)) return;
   if (subjects.length === 0) {
     app.innerHTML = `
-      <h1 class="page-title">나선 일지</h1>
-      <div class="empty">아직 나선이 없습니다.<br/>
-      <code>helix import spiral-buddy &lt;vault-path&gt;</code> 로 기존 노트를 가져오세요.</div>`;
+      <section class="empty-state">
+        <h1>첫 노트를 시작해보세요.</h1>
+        <p>기존 학습 노트를 가져오면 주제별 변화가 Layer로 이어집니다.</p>
+        <code>helix import spiral-buddy &lt;vault-path&gt;</code>
+      </section>`;
     return;
   }
-  const openTotal = subjects.reduce((n, s) => n + s.openQuestionCount, 0);
-  const layerTotal = subjects.reduce((n, s) => n + s.layerCount, 0);
+  const focus = selectHomeFocus(subjects, questions);
+  const focusLayer = focus.question?.raisedAtLayer ?? focus.subject.layerCount;
+  const focusRoute =
+    `#/s/${encodeURIComponent(focus.subject.id)}?layer=${focusLayer}`;
+  const focusText = focus?.question
+    ? compactText(plain(focus.question.text), 180)
+    : "가장 최근에 작성한 Layer부터 다시 이어갈 수 있습니다.";
 
   app.innerHTML = `
-    <section class="hero">
-      <div class="mono-label hero-tagline">학습 나선 일지</div>
-      <h1 class="hero-title">같은 주제를 다시 감아올리는, 학습의 나선.</h1>
-      <p class="hero-sub">주제마다 쌓인 layer와 열린 질문, 그리고 나선들 사이의 연결을 한자리에서 봅니다.</p>
-      <div class="hero-badges">
-        <span class="hero-badge">나선 <b>${subjects.length}</b></span>
-        <span class="hero-badge">layer <b>${layerTotal}</b></span>
-        <a class="hero-badge" href="#/q">남은 질문 <b>${openTotal}</b></a>
+    <header class="home-intro">
+      <h1>생각을 이어 쓰세요.</h1>
+      <p>주제마다 배움의 변화를 Layer로 남깁니다.</p>
+    </header>
+    <section class="continue-panel" aria-labelledby="continue-title">
+      <div class="continue-copy">
+        <span class="continue-label">${focus.question ? "다음 질문" : "이어서 보기"}</span>
+        <h2 id="continue-title">${esc(displayTitle(focus.subject.title))}</h2>
+        <p>${focus.question ? mdInline(focusText) : esc(focusText)}</p>
+        <span class="continue-context">Layer ${focusLayer}</span>
       </div>
+      <a class="continue-action" href="${focusRoute}">
+        ${focus.question ? "질문 이어보기" : "노트 열기"} <span aria-hidden="true">→</span>
+      </a>
     </section>
     <div class="sec-head">
-      <h2>모든 나선</h2>
-      <a class="sec-side map-link" href="#/map">지도에서 보기 →</a>
+      <h2>노트</h2>
+      <div class="subject-sort" role="group" aria-label="나선 정렬">
+        <button type="button" data-home-sort="recent" aria-pressed="true">최근</button>
+        <button type="button" data-home-sort="questions" aria-pressed="false">질문</button>
+      </div>
     </div>
-    <div class="subject-list">
-      ${subjects.map(subjectRow).join("")}
-    </div>`;
+    <div class="subject-list" id="home-subject-list"></div>`;
+
+  const list = document.getElementById("home-subject-list");
+  const paintSubjects = (mode) => {
+    list.innerHTML = sortSubjects(subjects, mode).map(subjectRow).join("");
+  };
+  paintSubjects("recent");
+  app.querySelector(".subject-sort").addEventListener("click", (event) => {
+    const button = event.target.closest("[data-home-sort]");
+    if (!button) return;
+    for (const option of app.querySelectorAll("[data-home-sort]")) {
+      option.setAttribute("aria-pressed", String(option === button));
+    }
+    paintSubjects(button.dataset.homeSort);
+  });
 }
 
 /* ---------- 나선 학습 지도 ---------- */
@@ -495,19 +725,27 @@ function repoLabelOf(key) {
     .map((w) => w[0].toUpperCase() + w.slice(1))
     .join(" ");
 }
+function chapterLabelOf(roadmapId) {
+  const key = String(roadmapId ?? "")
+    .split("/")
+    .filter(Boolean)
+    .at(-1);
+  return key ? repoLabelOf(key) : "기타";
+}
 
 /**
  * 나선 지도 — 2단계 계층.
  *  #/map            전체: 레포마다 하나의 나선, 노드 = 챕터. 챕터 클릭 → 레포 지도.
- *  #/map/:repo      레포: 챕터마다 하나의 나선, 노드 = 주제. 주제 클릭 → 상세.
+ *  #/map/:repo      레포: 챕터별 주제 지도. 주제 클릭 → 상세.
  */
-async function renderMap(repoKey) {
+async function renderMap(repoKey, routeEpoch) {
   const token = ++mapToken;
   const onMap = () => (location.hash.split("?")[0].split("/")[1] || "").split("?")[0] === "map";
   const data = await getJSON("/api/graph");
-  if (token !== mapToken || !onMap()) return; // fetch 중 다른 라우트로 이동 → 덮어쓰기 방지
-  const focus =
-    new URLSearchParams(location.hash.split("?")[1] || "").get("focus") || undefined;
+  if (token !== mapToken || !onMap() || !routeIsCurrent(routeEpoch)) return; // fetch 중 다른 라우트로 이동 → 덮어쓰기 방지
+  const query = new URLSearchParams(location.hash.split("?")[1] || "");
+  const focus = query.get("focus") || undefined;
+  const chapterFocus = query.get("chapter") || undefined;
 
   let mountNodes;
   let nodeRoute;
@@ -531,18 +769,27 @@ async function renderMap(repoKey) {
     });
     nodeRoute = undefined; // 기본: 주제 상세로
     const label = repoLabelOf(repoKey);
-    const first = subs[0].lastTouched;
-    const last = subs[subs.length - 1].lastTouched;
+    const selectedChapter = chapterFocus
+      ? subs.find((subject) => subject.roadmapId === chapterFocus)?.roadmapId
+      : undefined;
+    const selectedChapterLabel = selectedChapter
+      ? subs.find((subject) => subject.roadmapId === selectedChapter)?.roadmapTitle
+      : undefined;
     headHTML = `
-      <h1 class="page-title">${esc(label)}</h1>
-      <p class="page-sub"><a class="map-link" href="#/map">← 전체 나선 지도</a> · 챕터마다 하나의 나선 · 주제 ${subs.length}개 · ${esc(first)} → ${esc(last)} · 드래그/휠/클릭</p>`;
-    ariaLabel = `${label} 나선 지도: 주제 ${subs.length}개, ${first}부터 ${last}까지. 화살표 키로 노드 이동, Enter로 열기. 아래 목록으로도 탐색할 수 있습니다.`;
+      <nav class="breadcrumbs" aria-label="지도 경로">
+        <a href="#/map">전체 지도</a><span aria-hidden="true">/</span>
+        <span>${esc(label)}</span>
+        ${selectedChapterLabel ? `<span aria-hidden="true">/</span><strong>${esc(selectedChapterLabel)}</strong>` : ""}
+      </nav>
+      <header class="map-heading">
+        <h1 class="page-title">${esc(label)}</h1>
+      </header>`;
+    ariaLabel = `${label} 나선 지도: 주제 ${subs.length}개.${selectedChapterLabel ? ` 현재 ${selectedChapterLabel} 챕터에 초점.` : ""} 왼쪽과 오른쪽 화살표 키로 노드 이동, Enter로 열기. 아래 목록으로도 탐색할 수 있습니다.`;
     fallbackHTML = subs
       .map(
-        (n) => `<li><a href="#/s/${encodeURIComponent(n.id)}">
-      <span class="mf-date">${esc(n.lastTouched.slice(5))}</span>
+        (n) => `<li${n.roadmapId === selectedChapter ? ` class="current-chapter"` : ""}><a href="#/s/${encodeURIComponent(n.id)}">
       <span class="mf-title">${esc(displayTitle(n.title))}</span>
-      <span class="mf-rm">${n.roadmapTitle ? esc(n.roadmapTitle) + " · " : ""}연결 ${(n.neighbors ?? []).filter((m) => inRepo.has(m.id)).length}</span>
+      ${n.roadmapTitle ? `<span class="mf-rm">${esc(n.roadmapTitle)}</span>` : ""}
     </a></li>`,
       )
       .join("");
@@ -590,7 +837,7 @@ async function renderMap(repoKey) {
       layerCount: c.layerCount,
       oqCount: c.oqCount,
       degW: 3 * c.count, // 크기 = 주제 수
-      tipMeta: `주제 ${c.count} · ${c.lastTouched} → ${c._last}${c.oqCount ? ` · 열린 질문 ${c.oqCount}` : ""}`,
+      tipMeta: `주제 ${c.count}`,
       neighbors: [...c._agg.entries()].map(([id, v]) => ({
         id,
         kind: v.edge ? "edge" : "tag",
@@ -598,18 +845,20 @@ async function renderMap(repoKey) {
       })),
     }));
     const chRepo = new Map(mountNodes.map((c) => [c.id, c.roadmapId]));
-    nodeRoute = (chId) => `#/map/${encodeURIComponent(chRepo.get(chId) ?? "misc")}`;
+    nodeRoute = (chId) => {
+      const repository = chRepo.get(chId) ?? "misc";
+      return `#/map/${encodeURIComponent(repository)}?chapter=${encodeURIComponent(chId)}`;
+    };
     const repoCount = new Set(mountNodes.map((c) => c.roadmapId)).size;
     headHTML = `
-      <h1 class="page-title">나선 지도</h1>
-      <p class="page-sub">레포 ${repoCount}개, 각각 하나의 나선 · 노드 = 챕터 · <strong>나선을 클릭하면 안으로 들어갑니다</strong> · 나선 사이의 선 = 레포 간 연결</p>`;
+      <header class="map-heading">
+        <h1 class="page-title">나선 지도</h1>
+      </header>`;
     ariaLabel = `전체 나선 지도: 레포 ${repoCount}개, 챕터 ${mountNodes.length}개. 화살표 키로 챕터 이동, Enter로 레포 지도 열기. 아래 목록으로도 탐색할 수 있습니다.`;
     fallbackHTML = mountNodes
       .map(
-        (c) => `<li><a href="#/map/${encodeURIComponent(c.roadmapId)}">
-      <span class="mf-date">${esc(c.lastTouched.slice(5))}</span>
+        (c) => `<li><a href="#/map/${encodeURIComponent(c.roadmapId)}?chapter=${encodeURIComponent(c.id)}">
       <span class="mf-title">${esc(c.title)}</span>
-      <span class="mf-rm">${esc(c.roadmapTitle)} · 주제 ${c.degW / 3}</span>
     </a></li>`,
       )
       .join("");
@@ -622,16 +871,19 @@ async function renderMap(repoKey) {
         aria-label="${esc(ariaLabel)}"></canvas>
     </div>
     <div class="sr-only" aria-live="polite" id="map-live"></div>
-    <h2 class="map-list-h">목록 — 학습 순서</h2>
-    <ol class="map-fallback">${fallbackHTML}</ol>`;
+    <details class="map-index">
+      <summary><span>목록으로 보기</span></summary>
+      <ol class="map-fallback">${fallbackHTML}</ol>
+    </details>`;
 
   const canvas = app.querySelector(".spiral-canvas");
   const live = app.querySelector("#map-live");
   try {
     const { mount } = await import("/spiralmap.js");
-    if (token !== mapToken || !onMap() || !canvas.isConnected) return; // import 중 라우트가 바뀜 → 죽은 canvas 마운트 방지
+    if (token !== mapToken || !onMap() || !routeIsCurrent(routeEpoch) || !canvas.isConnected) return; // import 중 라우트가 바뀜 → 죽은 canvas 마운트 방지
     mapHandle = mount(canvas, { nodes: mountNodes }, {
       focus,
+      focusGroup: repoKey ? chapterFocus : undefined,
       nodeRoute,
       // 전체 지도에서만: 나선(레포) 원판 클릭 → 그 레포의 나선 지도로
       groupRoute: repoKey ? undefined : (key) => `#/map/${encodeURIComponent(key)}`,
@@ -646,69 +898,92 @@ async function renderMap(repoKey) {
 function subjectRow(s) {
   return `
     <a class="subject-row" href="#/s/${encodeURIComponent(s.id)}">
-      <div class="row-meta">
-        <span>${esc(s.lastTouched)}</span>
-        <span>layer ${s.layerCount}</span>
-        ${s.openQuestionCount ? `<span class="oq">열린 질문 ${s.openQuestionCount}</span>` : ""}
+      <div class="subject-title-line">
+        <h3>${esc(displayTitle(s.title))}</h3>
+        <span class="subject-arrow" aria-hidden="true">→</span>
       </div>
-      <h3>${esc(displayTitle(s.title))}</h3>
-      ${
-        s.tags.length
-          ? `<div class="subject-tags">${s.tags
-              .slice(0, 4)
-              .map((t) => `<span class="tag">${esc(t)}</span>`)
-              .join("")}</div>`
-          : ""
-      }
+      <div class="row-meta">
+        <span>Layer ${s.layerCount}</span>
+        ${s.openQuestionCount ? `<span class="oq">질문 ${s.openQuestionCount}</span>` : ""}
+      </div>
     </a>`;
 }
 
 /* ---------- subject 상세 ---------- */
 
-async function renderTimeline(id) {
+async function renderTimeline(id, token) {
   const s = await getJSON(`/api/subjects/${encodeURIComponent(id)}`);
+  if (!routeIsCurrent(token)) return;
   const open = s.questions.filter((q) => q.status === "open");
-  const solved = s.questions.filter((q) => q.status === "resolved");
+  const nextQuestion = open
+    .slice()
+    .sort((a, b) => String(a.raisedAtDate).localeCompare(String(b.raisedAtDate)))[0];
   const qById = Object.fromEntries(s.questions.map((q) => [q.id, q]));
   const lanes = assignLanes(s.questions);
   const laneCount = Math.max(1, ...Object.values(lanes).map((l) => l + 1));
-  const gutterW = 28 + laneCount * 18 + 16;
+  const gutterW = 72;
   // 질문 실(strand)은 layer가 쌓여 실마다 시작·끝이 달라질 때만 정보가 된다.
   // layer 1개면 전부 동일한 평행선 = 번잡 — 배지·칩이 이미 같은 정보를 전달하므로 생략.
   const showStrands = s.layers.length >= 2;
+  const latest = s.layers.at(-1);
+  const rid = s.sources?.find((x) => x.kind === "spiral-buddy")?.roadmapId;
+  const repository = repoKeyOf(rid);
+  const chapter = rid ? chapterLabelOf(rid) : "분류되지 않은 나선";
 
   setTabTitle(displayTitle(s.title));
 
   app.innerHTML = `
-    <h1 class="page-title">${esc(displayTitle(s.title))}</h1>
-    <p class="page-sub tags">${s.tags.map(esc).join(" · ") || "&nbsp;"}</p>
-    <div class="badges">
-      <span class="badge">layer ${s.layers.length}</span>
-      ${open.length ? `<span class="badge open">열린 질문 ${open.length}</span>` : ""}
-      ${solved.length ? `<span class="badge">해소 ${solved.length}</span>` : ""}
-    </div>
+    <nav class="breadcrumbs" aria-label="나선 경로">
+      <a href="#/">나선 일지</a>
+      ${rid ? `<span aria-hidden="true">/</span><a href="#/map/${encodeURIComponent(repository)}?chapter=${encodeURIComponent(rid)}">${esc(repoLabelOf(repository))}</a><span aria-hidden="true">/</span><span>${esc(chapter)}</span>` : ""}
+    </nav>
+    <header class="subject-mast">
+      <div>
+        <h1 class="page-title">${esc(displayTitle(s.title))}</h1>
+        <p class="subject-meta">Layer ${s.layers.length}${open.length ? ` · 열린 질문 ${open.length}` : ""}</p>
+      </div>
+      <div class="subject-actions">
+        <a href="#/map/${encodeURIComponent(repository)}${rid ? `?chapter=${encodeURIComponent(rid)}&focus=${encodeURIComponent(id)}` : `?focus=${encodeURIComponent(id)}`}">지도에서 보기</a>
+      </div>
+    </header>
+    ${
+      nextQuestion
+        ? `<section class="thread-prompt">
+            <div class="thread-prompt-copy">
+              <h2>열린 질문</h2>
+            </div>
+            <div class="thread-prompt-list">
+              <a href="#/s/${encodeURIComponent(id)}?layer=${nextQuestion.raisedAtLayer}">
+                <span>${mdInline(compactText(nextQuestion.text, 150))}</span>
+                <b>Layer ${nextQuestion.raisedAtLayer}</b>
+              </a>
+              ${open.length > 1 ? `<a class="thread-more" href="#/q">${open.length - 1}개 더 보기 →</a>` : ""}
+            </div>
+          </section>`
+        : ""
+    }
+    <details class="layer-jump">
+      <summary>Layer 이동</summary>
+      <div>
+        ${s.layers.map((layer) => `
+          <a href="#/s/${encodeURIComponent(id)}?layer=${layer.index}"
+             ${layer.index === latest?.index ? `class="latest" aria-label="최신 Layer ${layer.index}"` : ""}>
+            ${layer.index}
+          </a>`).join("")}
+      </div>
+    </details>
+    <h2 class="timeline-title">기록</h2>
     <div class="timeline" style="--gutter-w:${showStrands ? gutterW : 0}px">
       ${showStrands ? `<div class="strand-gutter"></div>` : ""}
       <div class="layers-col">
-        ${s.layers.map((l) => layerCard(l, qById)).join("")}
-        ${
-          open.length
-            ? `<div class="next-fuel">
-               <p class="nf-lead">열린 가닥 ${open.length}개가 <strong>다음 나선</strong>을 기다리는 중</p>
-               ${open
-                 .map(
-                   (q) => `<div class="nf-item"><span class="qid">${q.id}</span> ${mdInline(q.text)}</div>`,
-                 )
-                 .join("")}</div>`
-            : ""
-        }
+        ${s.layers.map((l) => layerCard(l, qById, l.index === latest?.index)).join("")}
       </div>
     </div>`;
 
-  if (showStrands) drawStrands(s, lanes);
+  if (showStrands) mountStrands(s, lanes, laneCount);
   const target = new URLSearchParams(location.hash.split("?")[1]).get("layer");
   if (target) focusLayer(target);
-  const rid = s.sources?.find((x) => x.kind === "spiral-buddy")?.roadmapId;
+  if (!routeIsCurrent(token)) return;
   renderConnections(id, repoKeyOf(rid));
 }
 
@@ -778,26 +1053,33 @@ async function renderConnections(id, repo = "misc") {
   app.querySelector(".conn-panel")?.remove(); // 비순차 fetch로 인한 중복 패널 방지
   if (!sections.length) return; // 완전 고립이면 패널 자체를 그리지 않는다
 
-  const panel = document.createElement("aside");
+  const panel = document.createElement("details");
   panel.className = "conn-panel";
   panel.innerHTML =
-    `<div class="conn-head"><h2 class="conn-title">연결</h2>` +
+    `<summary>연결</summary>` +
+    `<div class="conn-body"><div class="conn-head">` +
     `<a class="conn-maplink" href="#/map/${encodeURIComponent(repo)}?focus=${encodeURIComponent(id)}">지도에서 보기 →</a></div>` +
-    sections.join("");
+    sections.join("") +
+    `</div>`;
   app.appendChild(panel);
 }
 
 function focusLayer(index) {
-  const card = document.querySelector(`[data-layer="${index}"]`);
+  const safeIndex = String(index);
+  if (!/^\d+$/.test(safeIndex)) return;
+  const card = app.querySelector(`[data-layer="${safeIndex}"]`);
   if (!card) return;
-  for (const c of document.querySelectorAll(".layer-card.highlight")) {
+  for (const c of app.querySelectorAll(".layer-card.highlight")) {
     c.classList.remove("highlight");
   }
+  const details = card.querySelector("details.sections");
+  if (details) details.open = true;
   card.classList.add("highlight");
-  card.scrollIntoView({ behavior: "smooth", block: "center" });
+  const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  card.scrollIntoView({ behavior: reduce ? "auto" : "smooth", block: "center" });
 }
 
-function layerCard(l, qById) {
+function layerCard(l, qById, isLatest = false) {
   const lede =
     l.content.sections.find((sec) => /한 줄 요약/.test(sec.heading))?.body ??
     l.content.sections[0]?.body ??
@@ -806,25 +1088,23 @@ function layerCard(l, qById) {
     (sec) => !/한 줄 요약/.test(sec.heading),
   );
   return `
-  <article class="layer-card" data-layer="${l.index}">
+  <article class="layer-card${isLatest ? " latest-layer" : ""}" data-layer="${l.index}">
     <div class="layer-head">
-      <span class="ln">Layer ${l.index}</span>
-      ${l.depth != null ? `<span>depth ${l.depth}</span>` : ""}
+      <span class="ln">Layer ${l.index}${isLatest ? " · 최신" : ""}</span>
       <span>${esc(l.date)}</span>
-      ${l.sessionRef ? `<span title="${esc(l.sessionRef)}">session</span>` : ""}
     </div>
     <p class="layer-lede">${mdInline(firstLine(lede))}</p>
     <div class="qchips">
       ${l.addedQuestionIds
         .map(
           (qid) =>
-            `<span class="qchip add"><span class="qid">${qid}</span> ${mdInline(qById[qid]?.text ?? "")}</span>`,
+            `<span class="qchip add">${mdInline(qById[qid]?.text ?? "")}</span>`,
         )
         .join("")}
       ${l.resolvedQuestionIds
         .map(
           (qid) =>
-            `<span class="qchip resolve"><span class="qid">${qid} ✓</span> 해소${
+            `<span class="qchip resolve">해소${
               qById[qid]?.resolution ? ` — ${mdInline(qById[qid].resolution)}` : ""
             }</span>`,
         )
@@ -832,11 +1112,10 @@ function layerCard(l, qById) {
     </div>
     ${
       rest.length
-        ? `<details class="sections">
+        ? `<details class="sections"${isLatest ? " open" : ""}>
            <summary>
              <span class="sum-closed">전체 내용 펼치기</span>
              <span class="sum-open">전체 내용 접기</span>
-             <span class="sum-count">${rest.length}섹션</span>
            </summary>
            ${rest
              .map(
@@ -849,12 +1128,37 @@ function layerCard(l, qById) {
   </article>`;
 }
 
-function drawStrands(s, lanes) {
-  const gutter = document.querySelector(".strand-gutter");
-  const timeline = document.querySelector(".timeline");
+function mountStrands(s, lanes, laneCount) {
+  const timeline = app.querySelector(".timeline");
+  const layers = app.querySelector(".layers-col");
+  if (!timeline || !layers || !app.querySelector(".strand-gutter")) return;
+  const schedule = () => {
+    cancelAnimationFrame(strandFrame);
+    strandFrame = requestAnimationFrame(() => {
+      strandFrame = 0;
+      drawStrands(s, lanes, laneCount);
+    });
+  };
+  strandObserver = new ResizeObserver(schedule);
+  strandObserver.observe(timeline);
+  strandObserver.observe(layers);
+  for (const details of layers.querySelectorAll("details.sections")) {
+    details.addEventListener("toggle", schedule);
+  }
+  if (document.fonts?.ready) {
+    void document.fonts.ready.then(schedule).catch(() => {});
+  }
+  schedule();
+}
+
+function drawStrands(s, lanes, laneCount) {
+  const gutter = app.querySelector(".strand-gutter");
+  const timeline = app.querySelector(".timeline");
+  if (!gutter || !timeline) return;
+  gutter.replaceChildren();
   const base = timeline.getBoundingClientRect();
   const cardY = {};
-  for (const card of document.querySelectorAll(".layer-card")) {
+  for (const card of app.querySelectorAll(".layer-card")) {
     const r = card.getBoundingClientRect();
     cardY[card.dataset.layer] = {
       mid: r.top - base.top + Math.min(r.height / 2, 48),
@@ -867,6 +1171,7 @@ function drawStrands(s, lanes) {
   spine.style.height = `${last.bottom - 8}px`;
   gutter.appendChild(spine);
   for (const l of s.layers) {
+    if (!cardY[l.index]) continue;
     const dot = el("div", "spine-dot");
     dot.style.top = `${cardY[l.index].mid - 7}px`;
     gutter.appendChild(dot);
@@ -874,7 +1179,8 @@ function drawStrands(s, lanes) {
 
   for (const q of s.questions) {
     const lane = lanes[q.id];
-    const x = 28 + lane * 18;
+    const x =
+      laneCount <= 1 ? 34 : 24 + (Math.max(0, lane) / (laneCount - 1)) * 30;
     const from = cardY[q.raisedAtLayer]?.mid ?? 0;
     const resolved = q.status === "resolved" && cardY[q.resolvedAtLayer];
     const to = resolved ? cardY[q.resolvedAtLayer].mid : last.bottom + 28;
@@ -919,46 +1225,65 @@ function assignLanes(questions) {
 
 /* ---------- 질문 대시보드 ---------- */
 
-async function renderQuestions() {
+async function renderQuestions(_id, token) {
   const [questions, subjects] = await Promise.all([
     getJSON("/api/questions"),
     getJSON("/api/subjects"),
   ]);
+  if (!routeIsCurrent(token)) return;
   const titleById = Object.fromEntries(
     subjects.map((s) => [s.id, displayTitle(s.title)]),
   );
   if (questions.length === 0) {
     app.innerHTML = `
-      <h1 class="page-title">남은 질문</h1>
-      <div class="empty">열린 질문이 없습니다. 모든 나선이 잠들어 있어요 — 다음 세션을 시작해 보세요.</div>`;
+      <h1 class="page-title">열린 질문</h1>
+      <div class="empty">현재 열린 질문이 없습니다.<br/>새 Layer가 질문을 남기면 이곳에 이어갈 내용이 모입니다.</div>`;
     return;
   }
-  const groups = new Map();
-  for (const q of questions) {
-    if (!groups.has(q.subjectId)) groups.set(q.subjectId, []);
-    groups.get(q.subjectId).push(q);
-  }
   app.innerHTML = `
-    <h1 class="page-title">남은 질문</h1>
-    <p class="page-sub">열린 질문 ${questions.length}개 — 다음 나선을 굴릴 연료</p>
-    ${[...groups.entries()]
-      .map(
-        ([sid, qs]) => `
-      <section class="q-group">
-        <h2>${esc(titleById[sid] ?? sid)}</h2>
-        ${qs
-          .map(
-            (q) => `
-          <a class="q-row" href="#/s/${encodeURIComponent(sid)}?layer=${q.raisedAtLayer}">
-            <span class="qmark">${q.id}</span>
-            <span class="qtext">${mdInline(q.text)}</span>
-            <span class="qwhere">layer ${q.raisedAtLayer}</span>
-          </a>`,
-          )
-          .join("")}
-      </section>`,
-      )
-      .join("")}`;
+    <header class="question-mast">
+      <h1 class="page-title">열린 질문 <span class="title-count">${questions.length}</span></h1>
+    </header>
+    <div class="question-toolbar">
+      <label class="question-filter">
+        <span class="sr-only">열린 질문 필터</span>
+        <input id="question-filter" type="search" placeholder="질문이나 나선 이름으로 찾기" autocomplete="off" />
+      </label>
+      <label class="question-sort">
+        <span>정렬</span>
+        <select id="question-sort">
+          <option value="oldest">오래된 질문부터</option>
+          <option value="newest">최근 질문부터</option>
+          <option value="subject">나선 이름순</option>
+        </select>
+      </label>
+    </div>
+    <div class="question-list" id="question-list"></div>`;
+
+  const list = document.getElementById("question-list");
+  const filter = document.getElementById("question-filter");
+  const sort = document.getElementById("question-sort");
+  const paint = () => {
+    const filtered = filterOpenQuestions(questions, filter.value, titleById);
+    const ordered = sortOpenQuestions(filtered, sort.value, titleById);
+    if (!ordered.length) {
+      list.innerHTML = `<div class="empty question-empty">일치하는 열린 질문이 없습니다.</div>`;
+      return;
+    }
+    list.innerHTML = ordered
+      .map((question) => `
+        <a class="q-row" href="#/s/${encodeURIComponent(question.subjectId)}?layer=${question.raisedAtLayer}">
+          <span class="q-main">
+            <span class="q-subject">${esc(titleById[question.subjectId] ?? question.subjectId)}</span>
+            <span class="qtext">${mdInline(question.text)}</span>
+          </span>
+          <span class="qwhere">Layer ${question.raisedAtLayer}</span>
+        </a>`)
+      .join("");
+  };
+  filter.addEventListener("input", paint);
+  sort.addEventListener("change", paint);
+  paint();
 }
 
 /* ---------- utils ---------- */
@@ -1100,6 +1425,13 @@ function plain(raw) {
   return String(raw)
     .replace(/\*\*([^*]+)\*\*/g, "$1")
     .replace(/`([^`]+)`/g, "$1");
+}
+
+function compactText(raw, max = 160) {
+  const value = plain(raw).replace(/\s+/g, " ").trim();
+  return value.length > max
+    ? `${value.slice(0, Math.max(0, max - 1)).trimEnd()}…`
+    : value;
 }
 
 function displayTitle(title) {

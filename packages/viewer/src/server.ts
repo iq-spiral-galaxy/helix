@@ -1,6 +1,6 @@
 import { readFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
-import { dirname, extname, join, normalize } from "node:path";
+import { dirname, extname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { Hono } from "hono";
 import type { Subject } from "@iq-helix/core";
@@ -24,6 +24,19 @@ function roadmapLabel(roadmapId: string): string {
     .map((w) => w[0].toUpperCase() + w.slice(1))
     .join(" ");
   return label || roadmapId;
+}
+
+function repositoryOf(roadmapId: string): string {
+  return roadmapId.split("/").find(Boolean) ?? "misc";
+}
+
+function repositoryLabel(repositoryId: string): string {
+  if (repositoryId === "misc") return "기타";
+  return repositoryId
+    .split("-")
+    .filter(Boolean)
+    .map((word) => word[0].toUpperCase() + word.slice(1))
+    .join(" ");
 }
 
 function roadmapOf(s: Subject): string | null {
@@ -177,7 +190,48 @@ export function createApp(store: FileHelixStore): Hono {
     const roadmaps = [...ix.groups.entries()]
       .map(([id, subs]) => ({ id, title: roadmapLabel(id), subjectIds: sortIds(subs) }))
       .sort((a, b) => b.subjectIds.length - a.subjectIds.length || a.title.localeCompare(b.title));
-    return c.json({ roadmaps, ungrouped: sortIds(ix.ungrouped) });
+    const repositoriesById = new Map<
+      string,
+      {
+        id: string;
+        title: string;
+        subjectCount: number;
+        chapters: {
+          id: string;
+          repositoryId: string;
+          title: string;
+          subjectIds: string[];
+        }[];
+      }
+    >();
+    for (const chapter of roadmaps) {
+      const repositoryId = repositoryOf(chapter.id);
+      const repository = repositoriesById.get(repositoryId) ?? {
+        id: repositoryId,
+        title: repositoryLabel(repositoryId),
+        subjectCount: 0,
+        chapters: [],
+      };
+      repository.subjectCount += chapter.subjectIds.length;
+      repository.chapters.push({ ...chapter, repositoryId });
+      repositoriesById.set(repositoryId, repository);
+    }
+    const repositories = [...repositoriesById.values()]
+      .map((repository) => ({
+        ...repository,
+        chapters: repository.chapters.sort(
+          (a, b) => a.title.localeCompare(b.title) || a.id.localeCompare(b.id),
+        ),
+      }))
+      .sort(
+        (a, b) =>
+          b.subjectCount - a.subjectCount || a.title.localeCompare(b.title),
+      );
+    return c.json({
+      repositories,
+      roadmaps,
+      ungrouped: sortIds(ix.ungrouped),
+    });
   });
 
   // 나선 학습 지도: 전체 노드 + 사전 솎인 이웃(헤어볼 방지). lastTouched ASC = 나선 안→밖 순서.
@@ -268,11 +322,20 @@ export function createApp(store: FileHelixStore): Hono {
 
   app.get("/api/questions", async (c) => c.json(await store.openQuestions()));
 
+  app.get("/api/*", (c) =>
+    c.json({ error: "존재하지 않는 API 엔드포인트" }, 404),
+  );
+
   app.get("*", async (c) => {
-    const reqPath = normalize(c.req.path).replace(/^\/+/, "");
-    const candidate = join(publicDir, reqPath || "index.html");
+    const reqPath = c.req.path.replace(/^\/+/, "");
+    const candidate = resolve(publicDir, reqPath || "index.html");
+    const rel = relative(publicDir, candidate);
+    const insidePublic =
+      rel !== ".." &&
+      !rel.startsWith(`..${sep}`) &&
+      !isAbsolute(rel);
     const file =
-      candidate.startsWith(publicDir) && existsSync(candidate) && extname(candidate)
+      insidePublic && existsSync(candidate) && extname(candidate)
         ? candidate
         : join(publicDir, "index.html");
     const body = await readFile(file);

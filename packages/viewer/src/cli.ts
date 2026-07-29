@@ -12,8 +12,9 @@ function arg(name: string, fallback: string): string {
 
 const root = arg("--root", process.env.HELIX_ROOT ?? join(homedir(), "helix"));
 const port = Number(arg("--port", "4180"));
+const hostname = arg("--host", process.env.HELIX_HOST ?? "127.0.0.1");
 const store = new FileHelixStore(root);
 
-serve({ fetch: createApp(store).fetch, port }, () => {
-  console.log(`iq-helix viewer → http://localhost:${port}  (root: ${root})`);
+serve({ fetch: createApp(store).fetch, port, hostname }, () => {
+  console.log(`iq-helix viewer → http://${hostname}:${port}  (root: ${root})`);
 });

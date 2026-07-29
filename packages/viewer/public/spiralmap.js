@@ -6,7 +6,7 @@
  * - 나선 사이 연결: 서로 다른 로드맵의 subject들이 태그/edge로 이어져 있으면
  *   나선 중심끼리 집계 곡선을 항상 표시(굵기·농도 = 연결 강도). 노드 호버 시엔
  *   그 노드의 개별 연결(다른 나선으로 건너가는 선 포함)만 점등.
- * - 물리·줌/팬·드래그·키보드·rAF 주차·⏸ 회전 토글은 v2와 동일.
+ * - 물리·줌/팬·드래그·키보드 탐색을 지원한다.
  */
 
 // 작은 나선 기하 (로컬 단위)
@@ -23,7 +23,6 @@ const K_REP = 0.8;
 const REP_CUT2 = 100;
 const K_LINK = 0.010;
 const DAMP = 0.85;
-const ROT = 0.0011;     // rad/frame@60fps ≈ 95초/회전 (각 나선이 제자리에서 자전)
 const PARK_EPS = 0.015;
 const LABEL_BAND = 12;  // 나선 위 라벨이 차지하는 여유 (배치 간격 계산에 포함)
 
@@ -35,7 +34,6 @@ export function mount(canvas, data, opts = {}) {
   const nodeRoute = opts.nodeRoute ?? ((id) => `#/s/${encodeURIComponent(id)}`);
   // 나선(그룹) 자체를 클릭해 안으로 들어가는 라우트 — 전체 지도에서만 주입됨
   const groupRoute = opts.groupRoute ?? null;
-  const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
   const P = readPalette();
 
   // ── 로드맵별 그룹핑 (레포 = 나선) ──
@@ -53,6 +51,8 @@ export function mount(canvas, data, opts = {}) {
       a.nodes[0].lastTouched.localeCompare(b.nodes[0].lastTouched) ||
       a.key.localeCompare(b.key),
   );
+  const focusGroup =
+    opts.focusGroup && groupsMap.has(opts.focusGroup) ? opts.focusGroup : null;
   // 키보드 탐색 순서 = 그룹 순회 (나선 단위로 이어서)
   const nodes = groups.flatMap((g) => g.nodes);
   const byId = new Map(nodes.map((n) => [n.id, n]));
@@ -134,13 +134,13 @@ export function mount(canvas, data, opts = {}) {
   const metaThMax = groups[groups.length - 1]?.th ?? 8;
   const RMAX = Math.max(...groups.map((g) => Math.hypot(g.cx, g.cy) + g.R), 60);
 
-  // 시뮬 초기화 (reduce면 정확히 home — 정착 모션 없음)
+  // 처음부터 정확한 위치에 놓아 장식적인 정착 모션을 만들지 않는다.
   for (const g of groups) {
     for (const n of g.nodes) {
       n._gcx = g.cx; n._gcy = g.cy;
       n._r = 3.8 + 1.3 * Math.sqrt(Math.max(n.degW, 0));
-      n.x = g.cx + n._lx + (reduce ? 0 : (Math.random() - 0.5) * 18);
-      n.y = g.cy + n._ly + (reduce ? 0 : (Math.random() - 0.5) * 18);
+      n.x = g.cx + n._lx;
+      n.y = g.cy + n._ly;
       n.vx = 0; n.vy = 0; n.fx = 0; n.fy = 0;
     }
   }
@@ -183,16 +183,13 @@ export function mount(canvas, data, opts = {}) {
   const toLocal = (sx, sy) => [(sx - cx - panX) / eff(), (sy - cy - panY) / eff()];
 
   // ── 상태 ──
-  let angle = 0;
+  const angle = 0;
   let hot = null;
   let hotGroup = null; // 호버 중인 나선(그룹) — groupRoute 있을 때만 사용
   let pinned = opts.focus && byId.has(opts.focus) ? opts.focus : null;
   let dragNode = null;
   let panning = false;
   let downX = 0, downY = 0, lastX = 0, lastY = 0;
-
-  const MOTION_KEY = "helix.map.motion";
-  let motion = !reduce && safeGet(MOTION_KEY) !== "off";
 
   // 툴팁
   const tip = document.createElement("div");
@@ -202,48 +199,47 @@ export function mount(canvas, data, opts = {}) {
   const hostEl = canvas.parentElement;
   if (hostEl) hostEl.appendChild(tip);
 
-  // 회전 토글
-  const motionBtn = document.createElement("button");
-  motionBtn.type = "button";
-  motionBtn.className = "map-motion";
-  function paintMotionBtn() {
-    motionBtn.textContent = motion ? "⏸ 회전" : "▶ 회전";
-    motionBtn.title = motion ? "회전 멈추기" : "회전 켜기";
-    motionBtn.setAttribute("aria-pressed", String(motion));
-  }
-  paintMotionBtn();
-  motionBtn.addEventListener("click", () => {
-    motion = !motion;
-    try { localStorage.setItem(MOTION_KEY, motion ? "on" : "off"); } catch { /* 프라이빗 모드 등 */ }
-    paintMotionBtn();
+  // 명시적 지도 제어 — 휠/트랙패드가 없는 환경과 키보드 사용자도 동일한 기능을 쓴다.
+  const mapControls = document.createElement("div");
+  mapControls.className = "map-controls";
+  const zoomOut = document.createElement("button");
+  zoomOut.type = "button";
+  zoomOut.textContent = "−";
+  zoomOut.setAttribute("aria-label", "지도 축소");
+  const fitAll = document.createElement("button");
+  fitAll.type = "button";
+  fitAll.textContent = "맞춤";
+  fitAll.setAttribute("aria-label", "전체 지도를 화면에 맞추기");
+  const zoomIn = document.createElement("button");
+  zoomIn.type = "button";
+  zoomIn.textContent = "+";
+  zoomIn.setAttribute("aria-label", "지도 확대");
+  mapControls.append(zoomOut, fitAll, zoomIn);
+  zoomOut.addEventListener("click", () => {
+    zoom = Math.max(0.45, zoom / 1.22);
     wake();
   });
-  if (hostEl) hostEl.appendChild(motionBtn);
+  zoomIn.addEventListener("click", () => {
+    zoom = Math.min(3, zoom * 1.22);
+    wake();
+  });
+  fitAll.addEventListener("click", () => {
+    zoom = 1;
+    panX = 0;
+    panY = 0;
+    pinned = null;
+    wake();
+  });
+  if (hostEl) hostEl.appendChild(mapControls);
 
   const interacting = () => dragNode || panning || hot != null;
   const ego = () => dragNode || hot || pinned;
 
   // ── 물리 ──
   function tick(dt) {
-    // pinned 중엔 회전 정지(포커스 노드가 흐르지 않게). Escape로 해제하면 재개.
-    // 회전은 노드 위치에 '강체'로 직접 적용 — 스프링이 home을 쫓아가며 선에서 뒤처지는
-    // 현상(회전 중 이탈 ↔ 정지 시 정착의 비일관)을 없앤다. 스프링은 교란 복원만 담당.
-    if (motion && !interacting() && pinned == null) {
-      const dth = ROT * dt;
-      angle += dth;
-      const c = Math.cos(dth), s = Math.sin(dth);
-      for (const n of nodes) {
-        const rx = n.x - n._gcx, ry = n.y - n._gcy;
-        n.x = n._gcx + rx * c - ry * s;
-        n.y = n._gcy + rx * s + ry * c;
-        const vx = n.vx, vy = n.vy;
-        n.vx = vx * c - vy * s;
-        n.vy = vx * s + vy * c;
-      }
-    }
     const ca = Math.cos(angle), sa = Math.sin(angle);
     for (const n of nodes) {
-      // home = 그룹 중심 + (자기 나선 중심 기준으로 회전한 로컬 좌표)
+      // home = 그룹 중심 + 나선 위의 고정 로컬 좌표
       n._hx = n._gcx + (n._lx * ca - n._ly * sa);
       n._hy = n._gcy + (n._lx * sa + n._ly * ca);
       n.fx = K_HOME * (n._hx - n.x);
@@ -265,8 +261,7 @@ export function mount(canvas, data, opts = {}) {
       const a = byId.get(e.a), b = byId.get(e.b);
       const dx = b.x - a.x, dy = b.y - a.y;
       const d = Math.hypot(dx, dy) || 1;
-      // rest = '현재' home 간 거리 — 나선들이 각자 회전하면 나선을 건너는 거리가 변하므로
-      // 고정 rest를 쓰면 회전할수록 스프링이 노드를 선 밖으로 끌어낸다. 홈 기준이면 항상 제자리 힘 0.
+      // rest = 현재 home 간 거리. 홈 기준이면 정지 상태에서 제자리 힘이 0이다.
       const rest = Math.hypot(a._hx - b._hx, a._hy - b._hy);
       const f = K_LINK * (d - rest) / d;
       a.fx += f * dx; a.fy += f * dy;
@@ -341,17 +336,18 @@ export function mount(canvas, data, opts = {}) {
     // 1) 메타 나선 (더 큰 나선 — 나선 원판 안은 끊어서)
     drawMetaSpine();
 
-    // 2) 각 로드맵의 작은 나선 척추 (자기 중심 기준 회전, 호버 시 밝게)
+    // 2) 각 로드맵의 작은 나선 척추 (호버 시 밝게)
+    const activeGroup = hotGroup ?? focusGroup;
     for (const g of groups) {
-      ctx.strokeStyle = g.key === hotGroup ? P.soft : P.ghost;
+      ctx.strokeStyle = g.key === activeGroup ? P.soft : P.ghost;
       ctx.lineWidth = 1;
       spiralPath(g.cx, g.cy, M_TH0, g.thMax, M_A, M_B, angle);
     }
 
     // 3) 나선 사이 집계 연결 — 기본은 숨김, 나선(원판)을 호버한 동안 그 나선의 것만 점등
-    if (hotGroup) {
+    if (activeGroup) {
       for (const rec of inter.values()) {
-        if (rec.a.key !== hotGroup && rec.b.key !== hotGroup) continue;
+        if (rec.a.key !== activeGroup && rec.b.key !== activeGroup) continue;
         const [x1, y1] = toScreen(rec.a.cx, rec.a.cy);
         const [x2, y2] = toScreen(rec.b.cx, rec.b.cy);
         const dx = x2 - x1, dy = y2 - y1;
@@ -407,18 +403,18 @@ export function mount(canvas, data, opts = {}) {
     for (const g of groups) {
       const [sx, sy] = toScreen(g.cx, g.cy);
       const topY = sy - g.R * eff() - 10;
-      ctx.font = "11.5px Pretendard, system-ui, sans-serif";
-      ctx.fillStyle = g.key === hotGroup ? P.text : P.soft;
+      ctx.font = "13px Pretendard, system-ui, sans-serif";
+      ctx.fillStyle = g.key === activeGroup ? P.text : P.soft;
       ctx.fillText(g.title, sx, topY);
       if (groupRoute) {
-        ctx.font = "9px 'JetBrains Mono', monospace";
-        ctx.fillStyle = g.key === hotGroup ? P.link : P.faint;
+        ctx.font = "11px 'JetBrains Mono', monospace";
+        ctx.fillStyle = g.key === activeGroup ? P.link : P.faint;
         ctx.fillText("들어가기 →", sx, topY + 14);
       }
     }
     for (const n of nodes) {
       if (n.id === e || n.id === pinned) {
-        ctx.font = "12px Pretendard, system-ui, sans-serif";
+        ctx.font = "13px Pretendard, system-ui, sans-serif";
         const right = n._sx - cx - panX >= 0;
         ctx.textAlign = right ? "left" : "right";
         ctx.fillStyle = n.id === e ? P.text : P.soft;
@@ -429,9 +425,10 @@ export function mount(canvas, data, opts = {}) {
 
   function hitTest(px, py) {
     let best = null, bd = Infinity;
+    const coarse = window.matchMedia("(pointer: coarse)").matches;
     for (const n of nodes) {
       const d = (n._sx - px) ** 2 + (n._sy - py) ** 2;
-      const rr = (n._r + 6) ** 2;
+      const rr = Math.max(n._r + 6, coarse ? 22 : 12) ** 2;
       if (d < rr && d < bd) { bd = d; best = n.id; }
     }
     return best;
@@ -458,7 +455,7 @@ export function mount(canvas, data, opts = {}) {
     lastTs = ts;
     const maxV = tick(dt);
     draw();
-    if (!motion && !interacting() && maxV < PARK_EPS) { raf = 0; lastTs = 0; return; }
+    if (!interacting() && maxV < PARK_EPS) { raf = 0; lastTs = 0; return; }
     raf = requestAnimationFrame(loop);
   }
   function wake() {
@@ -469,12 +466,11 @@ export function mount(canvas, data, opts = {}) {
     if (tipFor !== n.id) {
       const meta =
         n.tipMeta ??
-        `${n.lastTouched} · layer ${n.layerCount}${n.oqCount ? ` · 열린 질문 ${n.oqCount}` : ""}`;
+        `Layer ${n.layerCount}${n.oqCount ? ` · 질문 ${n.oqCount}` : ""}`;
       tip.innerHTML =
         `<strong>${escapeHtml(displayTitle(n.title))}</strong>` +
         `<span>${escapeHtml(meta)}</span>` +
-        (n.roadmapTitle ? `<span>${escapeHtml(n.roadmapTitle)}</span>` : "") +
-        `<span>연결 ${(n.neighbors ?? []).length}</span>`;
+        (n.roadmapTitle ? `<span>${escapeHtml(n.roadmapTitle)}</span>` : "");
       tip.hidden = false;
       tipFor = n.id;
       tipW = tip.offsetWidth; tipH = tip.offsetHeight;
@@ -492,7 +488,7 @@ export function mount(canvas, data, opts = {}) {
     if (tipFor !== key) {
       tip.innerHTML =
         `<strong>${escapeHtml(g.title)}</strong>` +
-        `<span>항목 ${g.nodes.length}개 · 클릭하면 이 나선으로 들어갑니다</span>`;
+        `<span>클릭해서 열기</span>`;
       tip.hidden = false;
       tipFor = key;
       tipW = tip.offsetWidth; tipH = tip.offsetHeight;
@@ -596,7 +592,7 @@ export function mount(canvas, data, opts = {}) {
     } else if (ev.key === "Enter" && (pinned ?? hot)) {
       onNavigate(nodeRoute(pinned ?? hot), ev.metaKey || ev.ctrlKey);
     } else if (ev.key === "Escape") {
-      pinned = null; // 선택 해제 → 회전 재개
+      pinned = null;
     }
     wake();
   }
@@ -625,6 +621,15 @@ export function mount(canvas, data, opts = {}) {
 
   canvas.style.cursor = "grab";
   computeView();
+  if (focusGroup) {
+    const group = groupsMap.get(focusGroup);
+    if (group) {
+      zoom = Math.min(2.4, Math.max(1.15, RMAX / Math.max((group.R + LABEL_BAND) * 3.2, 1)));
+      panX = -group.cx * eff();
+      panY = -group.cy * eff();
+      onAnnounce(`${group.title} 챕터를 중심으로 지도를 열었습니다.`);
+    }
+  }
   wake();
   if (pinned) announce(byId.get(pinned));
 
@@ -643,16 +648,12 @@ export function mount(canvas, data, opts = {}) {
       canvas.removeEventListener("wheel", onWheel);
       canvas.removeEventListener("keydown", onKey);
       tip.remove();
-      motionBtn.remove();
+      mapControls.remove();
     },
   };
 }
 
 /* ---------- utils ---------- */
-
-function safeGet(key) {
-  try { return localStorage.getItem(key); } catch { return null; }
-}
 
 function readPalette() {
   const css = getComputedStyle(document.documentElement);
