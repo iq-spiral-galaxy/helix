@@ -40,6 +40,7 @@ describe("Helix viewer UI contract", () => {
       "LAYER TIMELINE",
       "OPEN THREADS",
       "챕터마다 하나의 나선",
+      "주제마다 배움의 변화를 Layer로 남깁니다.",
     ]) {
       expect(app).not.toContain(label);
     }
@@ -54,5 +55,38 @@ describe("Helix viewer UI contract", () => {
     expect(css).toContain(".map-controls");
     expect(map).toContain('zoomOut.setAttribute("aria-label", "지도 축소")');
     expect(map).toContain("coarse ? 22 : 12");
+  });
+
+  it("설정에서 저장 가능한 다크·라이트 테마를 제공한다", () => {
+    expect(html).toMatch(
+      /<dialog[^>]*id="settings-dialog"[^>]*aria-modal="true"[^>]*aria-labelledby="settings-title"/,
+    );
+    expect(html).toContain('id="settings-trigger"');
+    expect(html).toContain('aria-controls="settings-dialog"');
+    expect(html).toContain('id="settings-close"');
+    expect(html).toContain('name="helix-theme" value="dark"');
+    expect(html).toContain('name="helix-theme" value="light"');
+    expect(html).toContain('localStorage.getItem("helix.theme")');
+    expect(html).toContain("document.documentElement.dataset.theme");
+    expect(app).toContain('"helix.theme"');
+    expect(app).toContain("root.dataset.theme");
+    expect(app).toContain("refreshTheme");
+    expect(css).toContain(':root[data-theme="light"]');
+    expect(css).toContain(".search-head input:focus-visible");
+    expect(map).toContain("refreshTheme()");
+  });
+
+  it("데스크톱 사이드바를 다시 열 수 있고 질문 정렬을 가로로 유지한다", () => {
+    const asideEnd = html.indexOf("</aside>");
+    const desktopToggle = html.indexOf('id="sidebar-collapse"');
+    expect(desktopToggle).toBeGreaterThan(asideEnd);
+    expect(html).toContain('aria-controls="side-panel"');
+    expect(app).toContain('"helix.sidebar"');
+    expect(app).toContain("sidePanel.inert = collapsed");
+    expect(app).toContain('desktopSideToggle.setAttribute("aria-expanded"');
+    expect(app).toContain('open ? "나선 목록 닫기" : "나선 목록 열기"');
+    expect(css).toContain(':root[data-sidebar="collapsed"] .sidebar');
+    expect(css).toMatch(/\.question-sort > span \{[\s\S]*?white-space: nowrap;/);
+    expect(css).toMatch(/\.question-sort > span \{[\s\S]*?writing-mode: horizontal-tb;/);
   });
 });

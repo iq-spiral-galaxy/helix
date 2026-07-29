@@ -21,6 +21,19 @@
   --link: #94b5a5;
   --link-soft: rgba(148, 181, 165, 0.11);
   --link-border: rgba(148, 181, 165, 0.24);
+  --focus-ring: #a8bee0;
+  --accent-contrast: #07101e;
+  --scroll-thumb: rgba(255, 255, 255, 0.10);
+  --map-surface: #0a0f15;
+  --control-surface: rgba(13, 17, 23, 0.90);
+  --scrim: rgba(5, 8, 12, 0.68);
+  --shadow-modal: 0 18px 50px rgba(0, 0, 0, 0.42);
+  --shadow-floating: 0 12px 32px rgba(0, 0, 0, 0.26);
+  --code-keyword: #7ba3e8;
+  --code-number: #d0a273;
+  --code-annotation: #a894e0;
+  --code-type: #8fc7cf;
+  --code-function: #c3cbd8;
 
   --sans: "Pretendard Variable", Pretendard, -apple-system, BlinkMacSystemFont,
     "Apple SD Gothic Neo", system-ui, sans-serif;
@@ -29,6 +42,40 @@
   --sidebar-w: 280px;
   font-synthesis: none;
   text-rendering: optimizeLegibility;
+}
+
+:root[data-theme="light"] {
+  color-scheme: light;
+  --paper: #f6f7f9;
+  --sidebar: #eef1f4;
+  --raised: #e5e9ee;
+  --raised-soft: #edf0f3;
+  --panel: #fbfcfd;
+  --border: rgba(31, 42, 55, 0.14);
+  --border-faint: rgba(31, 42, 55, 0.08);
+  --text: #1b222c;
+  --text-soft: #566170;
+  --text-faint: rgba(31, 42, 55, 0.68);
+  --text-ghost: rgba(31, 42, 55, 0.34);
+  --accent: #425f8f;
+  --accent-soft: rgba(66, 95, 143, 0.11);
+  --accent-border: rgba(66, 95, 143, 0.25);
+  --link: #376b55;
+  --link-soft: rgba(55, 107, 85, 0.10);
+  --link-border: rgba(55, 107, 85, 0.25);
+  --focus-ring: #365c91;
+  --accent-contrast: #ffffff;
+  --scroll-thumb: rgba(31, 42, 55, 0.18);
+  --map-surface: #edf0f3;
+  --control-surface: rgba(251, 252, 253, 0.92);
+  --scrim: rgba(31, 42, 55, 0.34);
+  --shadow-modal: 0 18px 50px rgba(31, 42, 55, 0.18);
+  --shadow-floating: 0 12px 32px rgba(31, 42, 55, 0.14);
+  --code-keyword: #315d9d;
+  --code-number: #8a5321;
+  --code-annotation: #694f9e;
+  --code-type: #276d77;
+  --code-function: #344152;
 }
 
 * { box-sizing: border-box; }
@@ -59,7 +106,7 @@ body {
 a { color: inherit; text-decoration: none; }
 ::selection { background: var(--accent-soft); }
 :focus-visible {
-  outline: 2px solid color-mix(in srgb, var(--accent) 78%, white);
+  outline: 2px solid var(--focus-ring);
   outline-offset: 2px;
   box-shadow: none;
   border-radius: 6px;
@@ -108,7 +155,7 @@ code {
 .brand-mark {
   display: block;
   flex: none;
-  color: #aeb8c7;
+  color: var(--text-soft);
 }
 .brand-name {
   color: var(--text);
@@ -217,7 +264,7 @@ code {
 .workspace { flex: 1; min-width: 0; overflow-y: auto; position: relative; background: var(--paper); }
 .workspace::-webkit-scrollbar, .side-list::-webkit-scrollbar, .search-results::-webkit-scrollbar { width: 10px; }
 .workspace::-webkit-scrollbar-thumb, .side-list::-webkit-scrollbar-thumb, .search-results::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.09);
+  background: var(--scroll-thumb);
   border-radius: 10px;
   border: 3px solid transparent;
   background-clip: content-box;
@@ -288,7 +335,7 @@ code {
   transition: opacity 0.12s, background 0.12s, color 0.12s;
 }
 .tab:hover .tab-close, .tab.active .tab-close { opacity: 0.7; }
-.tab-close:hover { background: rgba(255, 255, 255, 0.08); color: var(--text); opacity: 1; }
+.tab-close:hover { background: var(--raised); color: var(--text); opacity: 1; }
 
 /* 본문 종이 — 읽기폭 제한, 라운드·박스 없음 */
 main { max-width: 760px; margin: 0 auto; padding: 8px clamp(20px, 3vw, 44px) 96px; }
@@ -541,13 +588,13 @@ details.sections:not([open]) .sum-open { display: none; }
 }
 
 /* 신택스 토큰 — 뮤트 팔레트, 코드블록 내부에만 한정 (UI 색 규율과 별개인 '콘텐츠' 색) */
-.codeblock .tk-k { color: #7ba3e8; }                       /* 키워드 — 차분한 파랑 */
+.codeblock .tk-k { color: var(--code-keyword); }            /* 키워드 — 차분한 파랑 */
 .codeblock .tk-s { color: var(--link); }                   /* 문자열 — 세이지 (테마 관계색과 동일) */
 .codeblock .tk-c { color: var(--text-faint); font-style: italic; } /* 주석 */
-.codeblock .tk-n { color: #d0a273; }                       /* 숫자 — 뮤트 앰버 */
-.codeblock .tk-a { color: #a894e0; }                       /* @어노테이션 — 뮤트 바이올렛 */
-.codeblock .tk-t { color: #8fc7cf; }                       /* 타입/상수 — 뮤트 틸 */
-.codeblock .tk-f { color: #c3cbd8; }                       /* 함수 호출 — 밝은 중성 */
+.codeblock .tk-n { color: var(--code-number); }             /* 숫자 — 뮤트 앰버 */
+.codeblock .tk-a { color: var(--code-annotation); }         /* @어노테이션 — 뮤트 바이올렛 */
+.codeblock .tk-t { color: var(--code-type); }               /* 타입/상수 — 뮤트 틸 */
+.codeblock .tk-f { color: var(--code-function); }           /* 함수 호출 — 밝은 중성 */
 
 /* "다음 나선" — 좌측 보더 콜아웃 (그라디언트 없음) */
 .next-fuel {
@@ -744,7 +791,7 @@ details.sections:not([open]) .sum-open { display: none; }
   position: fixed;
   inset: 0;
   z-index: 200;
-  background: rgba(7, 9, 14, 0.6);
+  background: var(--scrim);
   display: flex;
   justify-content: center;
   align-items: flex-start;
@@ -757,7 +804,7 @@ details.sections:not([open]) .sum-open { display: none; }
   background: var(--raised);
   border: 1px solid var(--border);
   border-radius: 12px;
-  box-shadow: 0 18px 50px rgba(0, 0, 0, 0.45);
+  box-shadow: var(--shadow-modal);
   overflow: hidden;
 }
 .search-head {
@@ -776,6 +823,11 @@ details.sections:not([open]) .sum-open { display: none; }
   color: var(--text);
   font-family: var(--sans);
   font-size: 0.98rem;
+}
+.search-head input:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 3px;
+  border-radius: 4px;
 }
 .search-head input::placeholder { color: var(--text-faint); }
 .search-head kbd {
@@ -1228,7 +1280,7 @@ main[data-page="q"] { max-width: 980px; }
   border: 1px solid color-mix(in srgb, var(--accent) 56%, transparent);
   border-radius: 9px;
   background: var(--accent);
-  color: #07101e;
+  color: var(--accent-contrast);
   font-size: 0.84rem;
   font-weight: 700;
   transition: filter 0.15s, transform 0.15s;
@@ -1924,7 +1976,7 @@ details.sections summary {
     width: 100%;
     height: 100%;
     border: 0;
-    background: rgba(3, 7, 12, 0.68);
+    background: var(--scrim);
     backdrop-filter: blur(2px);
   }
   .sidebar-scrim[hidden] { display: none; }
@@ -2034,7 +2086,7 @@ details.sections summary {
     border: 1px solid var(--border);
     border-radius: 15px;
     background: color-mix(in srgb, var(--sidebar) 91%, transparent);
-    box-shadow: 0 12px 36px rgba(0, 0, 0, 0.34);
+    box-shadow: var(--shadow-floating);
     backdrop-filter: blur(16px);
   }
   .mobile-bottom-nav a,
@@ -2162,11 +2214,6 @@ main[data-page="q"] { max-width: 860px; }
   font-weight: 620;
   line-height: 1.16;
   letter-spacing: -0.048em;
-}
-.home-intro p {
-  margin: 0.8rem 0 0;
-  color: var(--text-soft);
-  font-size: 0.94rem;
 }
 .continue-panel {
   display: grid;
@@ -2304,14 +2351,14 @@ main[data-page="q"] { max-width: 860px; }
   margin: 1rem 0 0;
   border-color: var(--border-faint);
   border-radius: 10px;
-  background: #0a0f15;
+  background: var(--map-surface);
 }
 .map-controls {
   top: 10px;
   left: 10px;
   border-color: var(--border-faint);
   border-radius: 7px;
-  background: rgba(13, 17, 23, 0.88);
+  background: var(--control-surface);
   backdrop-filter: none;
 }
 .map-controls button {
@@ -2345,7 +2392,7 @@ main[data-page="q"] { max-width: 860px; }
   border-color: var(--border-faint);
   border-radius: 7px;
   background: var(--panel);
-  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.28);
+  box-shadow: var(--shadow-floating);
 }
 
 .subject-mast {
@@ -2519,7 +2566,7 @@ details.sections summary:hover { background: var(--raised-soft); }
 }
 
 @media (max-width: 880px) {
-  .sidebar { box-shadow: 18px 0 42px rgba(0, 0, 0, 0.22); }
+  .sidebar { box-shadow: var(--shadow-floating); }
   .sidebar .side-list { display: block; }
   .sidebar .side-search { display: flex; }
   .home-intro { padding: 2.4rem 0 1.6rem; }
@@ -2556,4 +2603,263 @@ details.sections summary:hover { background: var(--raised-soft); }
   .sec-head { align-items: center; }
   .subject-sort { max-width: none; }
   .question-toolbar { grid-template-columns: 1fr; }
+}
+
+/* ========== 환경 설정 · 데스크톱 탐색 ========== */
+
+.sidebar {
+  overflow: hidden;
+  transition:
+    width 0.18s ease,
+    padding 0.18s ease,
+    border-color 0.18s ease;
+}
+.side-settings {
+  display: flex;
+  min-height: 38px;
+  flex: none;
+  align-items: center;
+  padding: 7px 11px;
+  border-top: 1px solid var(--border-faint);
+  color: var(--text-faint);
+  font-size: 0.8rem;
+  text-align: left;
+}
+.side-settings:hover {
+  color: var(--text);
+}
+.sidebar-collapse {
+  display: grid;
+  place-items: center;
+}
+.panel-toggle-icon {
+  position: relative;
+  display: block;
+  width: 15px;
+  height: 13px;
+  border: 1px solid currentColor;
+  border-radius: 3px;
+}
+.panel-toggle-icon::before {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 4px;
+  border-left: 1px solid currentColor;
+  content: "";
+}
+
+.settings-dialog {
+  inset: 0 0 0 auto;
+  width: min(380px, 100vw);
+  max-width: none;
+  height: 100dvh;
+  max-height: none;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-left: 1px solid var(--border);
+  background: var(--panel);
+  box-shadow: var(--shadow-modal);
+  color: var(--text);
+}
+.settings-dialog[open] {
+  display: flex;
+  flex-direction: column;
+}
+.settings-dialog:not([open]) {
+  display: none;
+}
+.settings-dialog::backdrop {
+  background: var(--scrim);
+  backdrop-filter: blur(2px);
+}
+.settings-head {
+  display: flex;
+  min-height: 64px;
+  flex: none;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 18px;
+  border-bottom: 1px solid var(--border-faint);
+}
+.settings-head h2 {
+  font-size: 1rem;
+  font-weight: 620;
+}
+.settings-close {
+  display: grid;
+  width: 36px;
+  height: 36px;
+  place-items: center;
+  border-radius: 8px;
+  color: var(--text-faint);
+  font-size: 1.25rem;
+  line-height: 1;
+}
+.settings-close:hover {
+  background: var(--raised-soft);
+  color: var(--text);
+}
+.settings-body {
+  overflow-y: auto;
+  padding: 22px 18px;
+}
+.settings-body fieldset {
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+.settings-body legend {
+  margin-bottom: 12px;
+  color: var(--text-soft);
+  font-size: 0.78rem;
+  font-weight: 600;
+}
+.theme-options {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+.theme-option {
+  position: relative;
+  display: grid;
+  gap: 8px;
+  color: var(--text-soft);
+  cursor: pointer;
+  font-size: 0.78rem;
+}
+.theme-option input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+}
+.theme-preview {
+  position: relative;
+  display: block;
+  height: 86px;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  background: #0d1117;
+}
+.theme-preview::before {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 28%;
+  border-right: 1px solid rgba(222, 228, 236, 0.14);
+  background: #090d13;
+  content: "";
+}
+.theme-preview::after,
+.theme-preview i {
+  position: absolute;
+  right: 12px;
+  left: 38%;
+  height: 5px;
+  border-radius: 99px;
+  background: rgba(222, 228, 236, 0.18);
+  content: "";
+}
+.theme-preview::after {
+  top: 25px;
+}
+.theme-preview i {
+  top: 39px;
+  right: 28px;
+}
+.theme-preview-light {
+  border-color: rgba(31, 42, 55, 0.15);
+  background: #f6f7f9;
+}
+.theme-preview-light::before {
+  border-color: rgba(31, 42, 55, 0.12);
+  background: #e9edf1;
+}
+.theme-preview-light::after,
+.theme-preview-light i {
+  background: rgba(31, 42, 55, 0.2);
+}
+.theme-option input:checked + .theme-preview {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--accent-soft);
+}
+.theme-option input:checked ~ span:last-child {
+  color: var(--text);
+}
+.theme-option input:focus-visible + .theme-preview {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+
+.question-toolbar {
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+.question-filter {
+  min-width: 0;
+}
+.question-sort {
+  flex: none;
+  white-space: nowrap;
+}
+.question-sort > span {
+  flex: none;
+  white-space: nowrap;
+  writing-mode: horizontal-tb;
+}
+.question-sort select {
+  width: auto;
+  min-width: 200px;
+}
+.question-filter input:focus-visible,
+.question-sort select:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+
+@media (min-width: 881px) {
+  :root[data-sidebar="collapsed"] .sidebar {
+    width: 0;
+    padding-right: 0;
+    padding-left: 0;
+    border-right-color: transparent;
+  }
+  :root[data-sidebar="collapsed"] .sidebar > * {
+    opacity: 0;
+    pointer-events: none;
+  }
+  :root[data-sidebar="collapsed"] .sidebar-collapse {
+    background: var(--raised);
+    color: var(--text);
+  }
+  :root[data-sidebar="collapsed"] .panel-toggle-icon::before {
+    right: 4px;
+    left: auto;
+  }
+}
+
+@media (max-width: 880px) {
+  .sidebar-collapse {
+    display: none;
+  }
+  .side-settings {
+    display: flex;
+  }
+}
+
+@media (max-width: 520px) {
+  .settings-dialog {
+    width: 100vw;
+  }
+  .question-toolbar {
+    grid-template-columns: 1fr;
+  }
+  .question-sort {
+    justify-content: flex-start;
+  }
+  .question-sort select {
+    min-width: 0;
+  }
 }

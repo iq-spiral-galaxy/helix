@@ -4,6 +4,23 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Helix</title>
+  <meta name="theme-color" id="theme-color" content="#0d1117" />
+  <script>
+    (() => {
+      try {
+        const theme = localStorage.getItem("helix.theme");
+        const resolvedTheme = theme === "light" ? "light" : "dark";
+        document.documentElement.dataset.theme = resolvedTheme;
+        document.getElementById("theme-color").content =
+          resolvedTheme === "light" ? "#f6f7f9" : "#0d1117";
+        if (localStorage.getItem("helix.sidebar") === "collapsed") {
+          document.documentElement.dataset.sidebar = "collapsed";
+        }
+      } catch {
+        document.documentElement.dataset.theme = "dark";
+      }
+    })();
+  </script>
   <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
   <link
     rel="stylesheet"
@@ -19,7 +36,7 @@
 </head>
 <body>
   <div class="shell">
-    <aside class="sidebar" id="side-panel">
+    <aside class="sidebar" id="side-panel" aria-label="Helix 탐색">
       <a class="brand" href="#/">
         <svg class="brand-mark" width="20" height="20" viewBox="0 0 20 20" aria-hidden="true">
           <g fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
@@ -43,6 +60,10 @@
         <a href="#/q" data-nav="questions">열린 질문</a>
       </nav>
       <div class="side-list" id="side-list"></div>
+      <button class="side-settings" id="settings-trigger" type="button"
+        aria-haspopup="dialog" aria-controls="settings-dialog" aria-expanded="false">
+        설정
+      </button>
     </aside>
     <button class="sidebar-scrim" id="sidebar-scrim" type="button" aria-label="나선 목록 닫기" hidden></button>
     <div class="workspace">
@@ -58,6 +79,11 @@
         </button>
       </header>
       <div class="tabbar">
+        <button class="tnav sidebar-collapse" id="sidebar-collapse" type="button"
+          aria-label="사이드바 닫기" title="사이드바 닫기"
+          aria-controls="side-panel" aria-expanded="true">
+          <span class="panel-toggle-icon" aria-hidden="true"></span>
+        </button>
         <button class="tnav" id="nav-back" aria-label="뒤로" title="뒤로">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg>
         </button>
@@ -79,6 +105,30 @@
       <button id="mobile-bottom-search" type="button"><span aria-hidden="true">⌕</span><b>검색</b></button>
     </nav>
   </div>
+  <dialog class="settings-dialog" id="settings-dialog" role="dialog"
+    aria-modal="true" aria-labelledby="settings-title">
+    <header class="settings-head">
+      <h2 id="settings-title">설정</h2>
+      <button class="settings-close" id="settings-close" type="button" aria-label="설정 닫기">×</button>
+    </header>
+    <div class="settings-body">
+      <fieldset>
+        <legend>테마</legend>
+        <div class="theme-options">
+          <label class="theme-option">
+            <input type="radio" name="helix-theme" value="dark" />
+            <span class="theme-preview theme-preview-dark" aria-hidden="true"><i></i></span>
+            <span>다크</span>
+          </label>
+          <label class="theme-option">
+            <input type="radio" name="helix-theme" value="light" />
+            <span class="theme-preview theme-preview-light" aria-hidden="true"><i></i></span>
+            <span>라이트</span>
+          </label>
+        </div>
+      </fieldset>
+    </div>
+  </dialog>
   <div class="search-modal" id="search-modal" role="dialog" aria-modal="true" aria-labelledby="search-title" hidden>
     <div class="search-panel">
       <h2 class="sr-only" id="search-title">Helix 전체 검색</h2>

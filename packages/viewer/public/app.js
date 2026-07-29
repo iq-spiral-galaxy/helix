@@ -374,9 +374,25 @@ function markSidebar() {
 /* ---------- 모바일 탐색 ---------- */
 
 const mobileQuery = window.matchMedia("(max-width: 880px)");
+const root = document.documentElement;
 const sidePanel = document.getElementById("side-panel");
 const sideToggle = document.getElementById("sidebar-toggle");
 const sideScrim = document.getElementById("sidebar-scrim");
+const desktopSideToggle = document.getElementById("sidebar-collapse");
+
+function desktopSidebarCollapsed() {
+  return root.dataset.sidebar === "collapsed";
+}
+
+function syncDesktopSidebarToggle() {
+  const collapsed = desktopSidebarCollapsed();
+  desktopSideToggle.setAttribute("aria-expanded", String(!collapsed));
+  desktopSideToggle.setAttribute(
+    "aria-label",
+    collapsed ? "사이드바 열기" : "사이드바 닫기",
+  );
+  desktopSideToggle.title = collapsed ? "사이드바 열기" : "사이드바 닫기";
+}
 
 function syncMobileSidebar() {
   if (mobileQuery.matches) {
@@ -385,13 +401,35 @@ function syncMobileSidebar() {
     sidePanel.setAttribute("aria-hidden", String(!open));
     sideScrim.hidden = !open;
     sideToggle.setAttribute("aria-expanded", String(open));
+    sideToggle.setAttribute("aria-label", open ? "나선 목록 닫기" : "나선 목록 열기");
+    sideToggle.querySelector(".sr-only").textContent =
+      open ? "나선 목록 닫기" : "나선 목록 열기";
   } else {
+    const collapsed = desktopSidebarCollapsed();
+    if (collapsed && sidePanel.contains(document.activeElement)) {
+      desktopSideToggle.focus();
+    }
     sidePanel.classList.remove("mobile-open");
-    sidePanel.inert = false;
-    sidePanel.removeAttribute("aria-hidden");
+    sidePanel.inert = collapsed;
+    if (collapsed) sidePanel.setAttribute("aria-hidden", "true");
+    else sidePanel.removeAttribute("aria-hidden");
     sideScrim.hidden = true;
     sideToggle.setAttribute("aria-expanded", "false");
   }
+  syncDesktopSidebarToggle();
+}
+
+function setDesktopSidebar(collapsed) {
+  if (mobileQuery.matches) return;
+  if (collapsed && sidePanel.contains(document.activeElement)) {
+    desktopSideToggle.focus();
+  }
+  if (collapsed) root.dataset.sidebar = "collapsed";
+  else delete root.dataset.sidebar;
+  try {
+    localStorage.setItem("helix.sidebar", collapsed ? "collapsed" : "open");
+  } catch { /* 저장 불가 환경에서는 현재 화면에만 적용 */ }
+  syncMobileSidebar();
 }
 
 function openMobileSidebar() {
@@ -412,6 +450,9 @@ sideToggle.addEventListener("click", () => {
   sidePanel.classList.contains("mobile-open")
     ? closeMobileSidebar()
     : openMobileSidebar();
+});
+desktopSideToggle.addEventListener("click", () => {
+  setDesktopSidebar(!desktopSidebarCollapsed());
 });
 sideScrim.addEventListener("click", () => closeMobileSidebar());
 sidePanel.addEventListener("click", (event) => {
@@ -440,6 +481,14 @@ let searchQueryToken = 0;
 document.getElementById("search-trigger").addEventListener("click", openSearch);
 searchClose.addEventListener("click", closeSearch);
 document.addEventListener("keydown", (e) => {
+  if (
+    document.getElementById("settings-dialog")?.open &&
+    (e.metaKey || e.ctrlKey) &&
+    e.key.toLowerCase() === "k"
+  ) {
+    e.preventDefault();
+    return;
+  }
   if (!searchModal.hidden && e.key === "Tab") {
     e.preventDefault();
     if (e.shiftKey) {
@@ -494,6 +543,82 @@ function closeSearch() {
   back?.focus();
   searchOpener = null;
 }
+
+/* ---------- 설정 ---------- */
+
+const settingsTrigger = document.getElementById("settings-trigger");
+const settingsDialog = document.getElementById("settings-dialog");
+const settingsClose = document.getElementById("settings-close");
+const themeColor = document.getElementById("theme-color");
+const themeInputs = [...document.querySelectorAll('input[name="helix-theme"]')];
+
+function currentTheme() {
+  return root.dataset.theme === "light" ? "light" : "dark";
+}
+
+function syncThemeControls() {
+  const theme = currentTheme();
+  for (const input of themeInputs) input.checked = input.value === theme;
+  themeColor.content = theme === "light" ? "#f6f7f9" : "#0d1117";
+}
+
+function applyTheme(theme, persist = true) {
+  root.dataset.theme = theme === "light" ? "light" : "dark";
+  if (persist) {
+    try { localStorage.setItem("helix.theme", currentTheme()); } catch { /* 현재 화면에만 적용 */ }
+  }
+  syncThemeControls();
+  mapHandle?.refreshTheme?.();
+}
+
+function openSettings() {
+  if (!searchModal.hidden) closeSearch();
+  closeMobileSidebar(false);
+  syncThemeControls();
+  settingsTrigger.setAttribute("aria-expanded", "true");
+  if (!settingsDialog.open) settingsDialog.showModal();
+  settingsClose.focus();
+}
+
+function closeSettings() {
+  if (settingsDialog.open) settingsDialog.close();
+}
+
+settingsTrigger.addEventListener("click", openSettings);
+settingsClose.addEventListener("click", closeSettings);
+settingsDialog.addEventListener("click", (event) => {
+  if (event.target !== settingsDialog) return;
+  const rect = settingsDialog.getBoundingClientRect();
+  const inside =
+    event.clientX >= rect.left &&
+    event.clientX <= rect.right &&
+    event.clientY >= rect.top &&
+    event.clientY <= rect.bottom;
+  if (!inside) closeSettings();
+});
+settingsDialog.addEventListener("close", () => {
+  settingsTrigger.setAttribute("aria-expanded", "false");
+  const returnTarget = mobileQuery.matches
+    ? sideToggle
+    : desktopSidebarCollapsed()
+      ? desktopSideToggle
+      : settingsTrigger;
+  returnTarget.focus();
+});
+for (const input of themeInputs) {
+  input.addEventListener("change", () => {
+    if (input.checked) applyTheme(input.value);
+  });
+}
+window.addEventListener("storage", (event) => {
+  if (event.key === "helix.theme") applyTheme(event.newValue, false);
+  if (event.key === "helix.sidebar" && !mobileQuery.matches) {
+    if (event.newValue === "collapsed") root.dataset.sidebar = "collapsed";
+    else delete root.dataset.sidebar;
+    syncMobileSidebar();
+  }
+});
+syncThemeControls();
 
 async function buildIndex() {
   if (searchIndex) return searchIndex;
@@ -674,7 +799,6 @@ async function renderHome(_id, token) {
   app.innerHTML = `
     <header class="home-intro">
       <h1>생각을 이어 쓰세요.</h1>
-      <p>주제마다 배움의 변화를 Layer로 남깁니다.</p>
     </header>
     <section class="continue-panel" aria-labelledby="continue-title">
       <div class="continue-copy">

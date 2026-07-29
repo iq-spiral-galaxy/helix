@@ -34,7 +34,7 @@ export function mount(canvas, data, opts = {}) {
   const nodeRoute = opts.nodeRoute ?? ((id) => `#/s/${encodeURIComponent(id)}`);
   // 나선(그룹) 자체를 클릭해 안으로 들어가는 라우트 — 전체 지도에서만 주입됨
   const groupRoute = opts.groupRoute ?? null;
-  const P = readPalette();
+  let P = readPalette();
 
   // ── 로드맵별 그룹핑 (레포 = 나선) ──
   const groupsMap = new Map();
@@ -634,6 +634,10 @@ export function mount(canvas, data, opts = {}) {
   if (pinned) announce(byId.get(pinned));
 
   return {
+    refreshTheme() {
+      P = readPalette();
+      draw();
+    },
     destroy() {
       alive = false;
       cancelAnimationFrame(raf);
