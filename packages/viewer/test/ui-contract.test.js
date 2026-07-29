@@ -2,11 +2,12 @@ import { readFile } from "node:fs/promises";
 import { describe, expect, it } from "vitest";
 
 const publicDir = new URL("../public/", import.meta.url);
-const [html, app, css, map] = await Promise.all([
+const [html, app, css, map, themeInit] = await Promise.all([
   readFile(new URL("index.html", publicDir), "utf8"),
   readFile(new URL("app.js", publicDir), "utf8"),
   readFile(new URL("styles.css", publicDir), "utf8"),
   readFile(new URL("spiralmap.js", publicDir), "utf8"),
+  readFile(new URL("theme-init.js", publicDir), "utf8"),
 ]);
 
 function token(block, name) {
@@ -31,12 +32,31 @@ function contrast(a, b) {
   return (lighter + 0.05) / (darker + 0.05);
 }
 
+function channelSpread(hex) {
+  const channels = hex
+    .slice(1)
+    .match(/../g)
+    .map((value) => Number.parseInt(value, 16));
+  return Math.max(...channels) - Math.min(...channels);
+}
+
+function rgbaChannels(block, name) {
+  const match = block.match(
+    new RegExp(
+      `--${name}:\\s*rgba\\(\\s*(\\d+)\\s*,\\s*(\\d+)\\s*,\\s*(\\d+)\\s*,\\s*([\\d.]+)\\s*\\)`,
+    ),
+  );
+  return match ? match.slice(1).map(Number) : [];
+}
+
 describe("Helix viewer UI contract", () => {
   it("검색·탭·모바일 탐색의 접근성 표면을 유지한다", () => {
     expect(html).toContain('role="tablist"');
     expect(html).toContain('role="combobox"');
     expect(html).toContain('role="listbox"');
-    expect(html).toContain('id="search-close"');
+    expect(html).toContain('id="side-search-input"');
+    expect(html).toContain('id="side-search-status"');
+    expect(html).not.toContain('id="search-modal"');
     expect(html).toContain('id="sidebar-toggle"');
     expect(html).toContain('class="mobile-bottom-nav"');
     expect(app).toContain('role="option"');
@@ -79,7 +99,7 @@ describe("Helix viewer UI contract", () => {
     expect(map).toContain("coarse ? 22 : 12");
   });
 
-  it("라이트를 기본으로 하고 가독성 높은 그린 다크·라이트 테마를 제공한다", () => {
+  it("라이트를 기본으로 하고 중성 표면과 그린 포인트의 두 테마를 제공한다", () => {
     const light = css.match(/^:root\s*\{([\s\S]*?)^\}/m)?.[1] ?? "";
     const dark =
       css.match(/:root\[data-theme="dark"\]\s*\{([\s\S]*?)^\}/m)?.[1] ?? "";
@@ -92,22 +112,46 @@ describe("Helix viewer UI contract", () => {
     expect(html).toContain('id="settings-close"');
     expect(html).toContain('name="helix-theme" value="dark"');
     expect(html).toContain('name="helix-theme" value="light"');
-    expect(html).toContain('localStorage.getItem("helix.theme")');
-    expect(html).toContain('theme === "dark" ? "dark" : "light"');
-    expect(html).toContain('content="#f7f8f5"');
-    expect(html).toMatch(/catch \{\s*document\.documentElement\.dataset\.theme = "light";/);
+    expect(html).toContain('src="/theme-init.js"');
+    expect(themeInit).toContain('localStorage.getItem("helix.theme")');
+    expect(themeInit).toContain('theme === "dark" ? "dark" : "light"');
+    expect(html).toContain('content="#f7f7f6"');
+    expect(themeInit).toMatch(/catch \{\s*document\.documentElement\.dataset\.theme = "light";/);
     expect(app).toContain('"helix.theme"');
     expect(app).toContain('root.dataset.theme === "dark" ? "dark" : "light"');
     expect(app).toContain("refreshTheme");
     expect(css).toContain(':root[data-theme="dark"]');
     expect(light).toContain("color-scheme: light");
     expect(dark).toContain("color-scheme: dark");
-    expect(light).toContain("--paper: #f7f8f5");
-    expect(dark).toContain("--paper: #1b2420");
-    expect(light).toContain("--accent: #1f6b49");
-    expect(light).toContain("--link: #346b51");
-    expect(dark).toContain("--accent: #78c69a");
+    expect(light).toContain("--paper: #f7f7f6");
+    expect(dark).toContain("--paper: #1e1f20");
+    expect(light).toContain("--accent: #1f7147");
+    expect(light).toContain("--link: #356b4d");
+    expect(dark).toContain("--accent: #78c995");
     expect(dark).toContain("--link: #9bcfb0");
+    for (const block of [light, dark]) {
+      for (const name of [
+        "paper",
+        "sidebar",
+        "raised",
+        "raised-soft",
+        "panel",
+        "map-surface",
+        "map-path",
+        "selected-surface",
+      ]) {
+        expect(channelSpread(token(block, name))).toBeLessThanOrEqual(5);
+      }
+      const [red, green, blue] = token(block, "accent")
+        .slice(1)
+        .match(/../g)
+        .map((value) => Number.parseInt(value, 16));
+      expect(green).toBeGreaterThan(red + 30);
+      expect(green).toBeGreaterThan(blue + 20);
+      expect(
+        contrast(token(block, "map-path"), token(block, "map-surface")),
+      ).toBeGreaterThan(3);
+    }
     expect(contrast(token(light, "text"), token(light, "paper"))).toBeGreaterThan(7);
     expect(contrast(token(light, "text-faint"), token(light, "paper"))).toBeGreaterThan(4.5);
     for (const name of ["text-soft", "accent", "link"]) {
@@ -120,7 +164,7 @@ describe("Helix viewer UI contract", () => {
     expect(contrast(token(dark, "field-border"), token(dark, "paper"))).toBeGreaterThan(3);
     expect(contrast(token(dark, "text"), token(dark, "paper"))).toBeGreaterThan(7);
     expect(contrast(token(dark, "text-faint"), token(dark, "paper"))).toBeGreaterThan(4.5);
-    expect(css).toContain(".search-head input:focus-visible");
+    expect(css).toContain(".side-search:focus-within");
     expect(map).toContain("refreshTheme()");
   });
 
@@ -139,12 +183,16 @@ describe("Helix viewer UI contract", () => {
     expect(map).toMatch(/onReduceMotionChange[\s\S]*?motion = false;[\s\S]*?wake\(\);/);
     expect(map).toContain('reduceMotion.removeEventListener("change", onReduceMotionChange)');
     expect(map).toContain('"aria-label", "지도 제어"');
-    expect(app).toContain('class="back-link map-back" href="#/map"');
-    expect(app).toContain('aria-label="전체 나선 지도로 돌아가기"');
+    expect(app).not.toContain('class="back-link map-back"');
+    expect(app).toContain('parentRoute: repoKey ? "#/map" : undefined');
+    expect(map).toContain('parentLink.className = "map-control-back"');
+    expect(map).toContain('"aria-label", "전체 나선 지도로 돌아가기"');
+    expect(map).toMatch(/mapControls\.append\(parentLink\)[\s\S]*?mapControls\.append\(zoomOut,/);
     expect(app).toContain('class="back-link"');
     expect(app).toContain('?chapter=${encodeURIComponent(rid)}&focus=${encodeURIComponent(id)}');
     expect(app).not.toContain('class="subject-actions"');
     expect(css).toContain(".map-controls .map-play");
+    expect(css).toContain(".map-controls .map-control-back");
     expect(css).toContain(".back-link");
   });
 
@@ -156,10 +204,41 @@ describe("Helix viewer UI contract", () => {
     expect(app).toContain('"helix.sidebar"');
     expect(app).toContain("sidePanel.inert = collapsed");
     expect(app).toContain('desktopSideToggle.setAttribute("aria-expanded"');
-    expect(app).toContain('open ? "나선 목록 닫기" : "나선 목록 열기"');
+    expect(app).toContain('open ? "탐색 닫기" : "탐색 열기"');
     expect(css).toContain(':root[data-sidebar="collapsed"] .sidebar');
     expect(css).toMatch(/\.question-sort > span \{[\s\S]*?white-space: nowrap;/);
     expect(css).toMatch(/\.question-sort > span \{[\s\S]*?writing-mode: horizontal-tb;/);
+  });
+
+  it("사이드바는 기본 목록 없이 검색할 때만 평면 결과를 연다", () => {
+    const aside = html.match(/<aside[\s\S]*?<\/aside>/)?.[0] ?? "";
+    expect(aside).not.toContain('class="brand"');
+    expect(aside).toMatch(/<aside[^>]*>\s*<label class="side-search"/);
+    expect(html).toMatch(
+      /id="side-list"[^>]*role="listbox"[^>]*hidden/,
+    );
+    expect(app).toContain('const subjects = await getJSON("/api/subjects")');
+    expect(app).not.toContain('getJSON("/api/roadmaps")');
+    expect(app).not.toContain("helix.roadmap.collapsed");
+    expect(app).toContain("filterSidebarSubjects(sidebarSubjects, q)");
+    expect(app).toMatch(
+      /if \(!q\) \{[\s\S]*?sideSearchResults\.replaceChildren\(\);[\s\S]*?sideSearchResults\.hidden = true;[\s\S]*?aria-expanded",/,
+    );
+    expect(app).toContain('class="side-item side-search-result');
+    expect(app).toContain('role="option" tabindex="-1"');
+    expect(app).toContain("event.isComposing");
+    expect(app).toContain("if (searchSel < 0) searchSel = 0;");
+    expect(app).toContain("검색 결과 ${searchHits.length}개");
+    expect(app).toMatch(
+      /event\.key === "Enter"[\s\S]*?mobileQuery\.matches\) closeMobileSidebar\(false\);[\s\S]*?go\(hit\.route\)/,
+    );
+    expect(app).toContain("mobileSidebarOpener?.isConnected");
+    expect(app).toMatch(
+      /function focusSideSearch\(\)[\s\S]*?openMobileSidebar\(\)[\s\S]*?setDesktopSidebar\(false\)[\s\S]*?sideSearchInput\.focus/,
+    );
+    expect(app).toContain('item.setAttribute("aria-current", "page")');
+    expect(css).toContain(".side-list[hidden] { display: none !important; }");
+    expect(css).toContain(".side-settings { margin-top: auto; }");
   });
 
   it("새 탭 버튼을 탭 목록 바로 뒤의 같은 스크롤 흐름에 둔다", () => {
@@ -173,22 +252,39 @@ describe("Helix viewer UI contract", () => {
       /\.tabs\s*\{[\s\S]*?flex:\s*0 0 auto;[\s\S]*?overflow:\s*visible;/,
     );
     expect(app).toContain('document.getElementById("tab-new").scrollIntoView');
+    expect(html).toMatch(/id="tab-new"[\s\S]*?<svg width="15" height="15"/);
+    expect(app).toMatch(
+      /class="tab-close"[\s\S]*?<svg width="14" height="14"[\s\S]*?stroke-width="1.8"/,
+    );
+    expect(css).toMatch(/\.tab-close\s*\{[\s\S]*?width:\s*28px;[\s\S]*?height:\s*28px;/);
   });
 
-  it("은은한 그린 광택을 선택 상태와 지도 표면에만 연결한다", () => {
+  it("데스크톱 앱 업데이트와 데이터 폴더 제어를 안전한 브리지로 연결한다", () => {
+    expect(html).toContain('http-equiv="Content-Security-Policy"');
+    expect(html).not.toContain("fonts.googleapis.com");
+    expect(html).not.toContain("cdn.jsdelivr.net");
+    expect(html).toContain('id="desktop-settings" hidden');
+    expect(html).toContain('id="desktop-update-button"');
+    expect(html).toContain('id="desktop-data-change"');
+    expect(app).toContain("window.helixDesktop");
+    expect(app).toContain("desktopApi.checkForUpdate");
+    expect(app).toContain("desktopApi.installUpdate");
+    expect(app).toContain("desktopApi.chooseDataRoot");
+    expect(app).toContain("v${result.latest} 받기");
+    expect(css).toContain(".desktop-settings");
+    expect(css).toContain(".settings-action.primary");
+  });
+
+  it("지도 광택과 선택 면은 중성으로 두고 상태 표시만 그린으로 연결한다", () => {
     const light = css.match(/^:root\s*\{([\s\S]*?)^\}/m)?.[1] ?? "";
     const dark =
       css.match(/:root\[data-theme="dark"\]\s*\{([\s\S]*?)^\}/m)?.[1] ?? "";
-    const alpha = (block) =>
-      Number(
-        block.match(
-          /--map-bloom:\s*rgba\([^,]+,[^,]+,[^,]+,\s*([\d.]+)\)/,
-        )?.[1],
-      );
-
     for (const block of [light, dark]) {
-      expect(alpha(block)).toBeGreaterThan(0);
-      expect(alpha(block)).toBeLessThanOrEqual(0.1);
+      const [red, green, blue, alpha] = rgbaChannels(block, "map-bloom");
+      expect(red).toBe(green);
+      expect(green).toBe(blue);
+      expect(alpha).toBeGreaterThan(0);
+      expect(alpha).toBeLessThanOrEqual(0.06);
       expect(block).toContain("--selected-surface:");
       expect(block).toContain("--surface-highlight:");
     }
@@ -198,6 +294,11 @@ describe("Helix viewer UI contract", () => {
     expect(css).toMatch(
       /\.tab-wrap\.active\s*\{[\s\S]*?background:\s*var\(--selected-surface\)/,
     );
+    expect(css).toMatch(
+      /\.tab-wrap\.active::after\s*\{[\s\S]*?background:\s*var\(--accent\)/,
+    );
+    expect(map).toContain('ghost: g("--map-path"');
+    expect(css).toContain("--map-path: GrayText;");
     expect(css).not.toContain("shimmer");
   });
 

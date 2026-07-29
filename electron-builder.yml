@@ -1,0 +1,62 @@
+appId: com.iq-lab.helix
+productName: Helix
+copyright: © 2026 iq
+asar: true
+
+directories:
+  output: release
+  buildResources: electron/build
+
+files:
+  - electron/dist/**/*
+  - electron/preload.cjs
+  - electron/build/icon.png
+  - packages/viewer/public/**/*
+  - package.json
+
+mac:
+  category: public.app-category.productivity
+  target:
+    - target: dmg
+      arch:
+        - arm64
+        - x64
+  artifactName: Helix-${version}-${arch}.${ext}
+  icon: electron/build/icon.png
+  identity: "-"
+  hardenedRuntime: false
+  gatekeeperAssess: false
+
+dmg:
+  title: Helix ${version}
+  writeUpdateInfo: false
+
+win:
+  target:
+    - target: nsis
+      arch:
+        - x64
+  artifactName: Helix-Setup-${version}-${arch}.${ext}
+  icon: electron/build/icon.png
+
+nsis:
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  shortcutName: Helix
+
+linux:
+  target:
+    - target: AppImage
+      arch:
+        - x64
+  artifactName: Helix-${version}-${arch}.${ext}
+  icon: electron/build/icon.png
+  category: Office
+
+publish:
+  provider: github
+  owner: iq-spiral-galaxy
+  repo: helix
+  releaseType: release

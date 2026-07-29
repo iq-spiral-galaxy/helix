@@ -1,5 +1,6 @@
 import {
   filterOpenQuestions,
+  filterSidebarSubjects,
   parseBookmarkIds,
   selectHomeFocus,
   selectBookmarkItems,
@@ -9,6 +10,9 @@ import {
 } from "/experience.js";
 
 const app = document.getElementById("app");
+const sideSearchInput = document.getElementById("side-search-input");
+const sideSearchResults = document.getElementById("side-list");
+const sideSearchStatus = document.getElementById("side-search-status");
 const routes = {
   "": renderHome,
   bookmarks: renderBookmarks,
@@ -24,6 +28,10 @@ let strandObserver = null;
 let strandFrame = 0;
 let bookmarkIds = [];
 let knownSubjectIds = null;
+let sidebarSubjects = [];
+let sidebarSearchReady = false;
+let sidebarSearchFailed = false;
+let mobileSidebarOpener = null;
 try {
   bookmarkIds = parseBookmarkIds(localStorage.getItem(BOOKMARK_KEY));
 } catch { /* 저장소를 쓸 수 없으면 현재 세션 메모리로 동작 */ }
@@ -90,7 +98,7 @@ function renderTabs() {
           <span class="tab-title">${esc(t.title)}</span>
         </button>
         <button class="tab-close" data-close="${i}" aria-label="탭 닫기" tabindex="-1">
-          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg>
         </button>
       </div>`,
     )
@@ -300,24 +308,13 @@ function setBookmarked(id, title) {
 
 /* ---------- 사이드바 ---------- */
 
-/** 깨진/오염된 localStorage 값에 내성 — 항상 객체를 돌려준다 */
-function readCollapsed() {
-  try {
-    const v = JSON.parse(localStorage.getItem("helix.roadmap.collapsed") || "{}");
-    return v && typeof v === "object" ? v : {};
-  } catch {
-    return {};
-  }
-}
-
 async function initSidebar() {
   try {
-    const [subjects, grouping] = await Promise.all([
-      getJSON("/api/subjects"),
-      getJSON("/api/roadmaps"),
-    ]);
+    const subjects = await getJSON("/api/subjects");
     syncBookmarkCount(subjects);
-    const byId = Object.fromEntries(subjects.map((s) => [s.id, s]));
+    sidebarSubjects = subjects;
+    sidebarSearchReady = true;
+    sidebarSearchFailed = false;
     subjectTitles = Object.fromEntries(subjects.map((s) => [s.id, displayTitle(s.title)]));
     // 로딩 전에 열려서 "…"로 남은 탭 제목을 소급 확정
     let fixed = false;
@@ -325,89 +322,12 @@ async function initSidebar() {
       if (t.title === "…") { t.title = titleForRoute(t.route); fixed = true; }
     }
     if (fixed) { renderTabs(); saveTabs(); }
-    const collapsed = readCollapsed();
-
-    const itemHTML = (id) => {
-      const s = byId[id];
-      if (!s) return "";
-      return `
-        <a class="side-item" data-sid="${esc(id)}" href="#/s/${encodeURIComponent(id)}" title="${esc(displayTitle(s.title))}">
-          <span class="si-title">${esc(displayTitle(s.title))}</span>
-          ${s.openQuestionCount ? `<span class="si-oq" aria-label="열린 질문 ${s.openQuestionCount}개"></span>` : ""}
-        </a>`;
-    };
-    const chapterHTML = (chapter) => `
-      <div class="side-chapter">
-        <a class="side-chapter-head" href="#/map/${encodeURIComponent(chapter.repositoryId)}?chapter=${encodeURIComponent(chapter.id)}">
-          <span>${esc(chapter.title)}</span>
-        </a>
-        <div class="side-chapter-items">${chapter.subjectIds.map(itemHTML).join("")}</div>
-      </div>`;
-    const groupHTML = (key, label, chapters) => {
-      const open = !collapsed[key];
-      return `
-        <section class="side-group" data-rm="${esc(key)}">
-          <button class="side-group-head" aria-expanded="${open}">
-            <span class="disc">${open ? "▾" : "▸"}</span>
-            <span class="rm-label">${esc(label)}</span>
-          </button>
-          <div class="side-group-body"${open ? "" : " hidden"}>${chapters.map(chapterHTML).join("")}</div>
-        </section>`;
-    };
-
-    // API 구버전에도 내성을 유지하면서 Repo > Chapter > Subject 계층을 복원한다.
-    const repositories = grouping.repositories ?? (() => {
-      const byRepo = new Map();
-      for (const chapter of grouping.roadmaps ?? []) {
-        const repositoryId = repoKeyOf(chapter.id);
-        if (!byRepo.has(repositoryId)) {
-          byRepo.set(repositoryId, {
-            id: repositoryId,
-            title: repoLabelOf(repositoryId),
-            chapters: [],
-          });
-        }
-        byRepo.get(repositoryId).chapters.push({
-          ...chapter,
-          repositoryId,
-        });
-      }
-      return [...byRepo.values()];
-    })();
-    const miscChapters = grouping.ungrouped?.length
-      ? [{
-          id: "__misc",
-          repositoryId: "misc",
-          title: "분류되지 않은 나선",
-          subjectIds: grouping.ungrouped,
-        }]
-      : [];
-    const html = [
-      ...repositories.map((repo) =>
-        groupHTML(`repo:${repo.id}`, repo.title, repo.chapters),
-      ),
-      miscChapters.length ? groupHTML("__misc", "기타", miscChapters) : "",
-    ].join("");
-    const list = document.getElementById("side-list");
-    list.innerHTML = html;
-
-    list.addEventListener("click", (e) => {
-      const head = e.target.closest(".side-group-head");
-      if (!head) return;
-      const sec = head.closest(".side-group");
-      const body = sec.querySelector(".side-group-body");
-      const open = body.hidden; // 토글 후 상태
-      body.hidden = !open;
-      head.querySelector(".disc").textContent = open ? "▾" : "▸";
-      head.setAttribute("aria-expanded", String(open));
-      const next = readCollapsed();
-      next[sec.dataset.rm] = !open;
-      localStorage.setItem("helix.roadmap.collapsed", JSON.stringify(next));
-    });
-
+    paintSidebarResults();
     markSidebar();
   } catch {
-    /* 사이드바는 장식 — 실패해도 본문 라우팅은 계속 동작 */
+    sidebarSearchReady = true;
+    sidebarSearchFailed = true;
+    paintSidebarResults();
   }
 }
 
@@ -433,17 +353,9 @@ function markSidebar() {
   for (const item of document.querySelectorAll(".side-item")) {
     const on = page === "s" && item.dataset.sid === currentId;
     item.classList.toggle("active", on);
-    // 현재 나선이 접힌 그룹 안이면 그 그룹을 펼쳐 보이게 한다
-    if (on) {
-      const body = item.closest(".side-group-body");
-      if (body?.hidden) {
-        body.hidden = false;
-        const head = body.closest(".side-group").querySelector(".side-group-head");
-        head.querySelector(".disc").textContent = "▾";
-        head.setAttribute("aria-expanded", "true");
-      }
-      item.scrollIntoView({ block: "nearest" });
-    }
+    if (on) item.setAttribute("aria-current", "page");
+    else item.removeAttribute("aria-current");
+    if (on) item.scrollIntoView({ block: "nearest" });
   }
   const mobilePage = document.getElementById("mobile-page");
   if (mobilePage) mobilePage.textContent = titleForRoute(location.hash);
@@ -479,9 +391,15 @@ function syncMobileSidebar() {
     sidePanel.setAttribute("aria-hidden", String(!open));
     sideScrim.hidden = !open;
     sideToggle.setAttribute("aria-expanded", String(open));
-    sideToggle.setAttribute("aria-label", open ? "나선 목록 닫기" : "나선 목록 열기");
+    sideToggle.setAttribute("aria-label", open ? "탐색 닫기" : "탐색 열기");
     sideToggle.querySelector(".sr-only").textContent =
-      open ? "나선 목록 닫기" : "나선 목록 열기";
+      open ? "탐색 닫기" : "탐색 열기";
+    for (const button of [
+      document.getElementById("mobile-search"),
+      document.getElementById("mobile-bottom-search"),
+    ]) {
+      button.setAttribute("aria-expanded", String(open));
+    }
   } else {
     const collapsed = desktopSidebarCollapsed();
     if (collapsed && sidePanel.contains(document.activeElement)) {
@@ -493,6 +411,10 @@ function syncMobileSidebar() {
     else sidePanel.removeAttribute("aria-hidden");
     sideScrim.hidden = true;
     sideToggle.setAttribute("aria-expanded", "false");
+    document.getElementById("mobile-search").setAttribute("aria-expanded", "false");
+    document
+      .getElementById("mobile-bottom-search")
+      .setAttribute("aria-expanded", "false");
   }
   syncDesktopSidebarToggle();
 }
@@ -512,16 +434,24 @@ function setDesktopSidebar(collapsed) {
 
 function openMobileSidebar() {
   if (!mobileQuery.matches) return;
+  const opener = document.activeElement;
+  mobileSidebarOpener =
+    opener instanceof HTMLElement && !sidePanel.contains(opener)
+      ? opener
+      : sideToggle;
   sidePanel.classList.add("mobile-open");
   syncMobileSidebar();
-  sidePanel.querySelector(".side-search, .side-nav a")?.focus();
+  sideSearchInput.focus();
 }
 
 function closeMobileSidebar(restoreFocus = true) {
   const wasOpen = sidePanel.classList.contains("mobile-open");
+  const restoreTarget =
+    mobileSidebarOpener?.isConnected ? mobileSidebarOpener : sideToggle;
+  mobileSidebarOpener = null;
   sidePanel.classList.remove("mobile-open");
   syncMobileSidebar();
-  if (restoreFocus && wasOpen && mobileQuery.matches) sideToggle.focus();
+  if (restoreFocus && wasOpen && mobileQuery.matches) restoreTarget.focus();
 }
 
 sideToggle.addEventListener("click", () => {
@@ -536,91 +466,43 @@ sideScrim.addEventListener("click", () => closeMobileSidebar());
 sidePanel.addEventListener("click", (event) => {
   if (event.target.closest("a[href^='#/']")) closeMobileSidebar(false);
 });
-document.getElementById("mobile-search").addEventListener("click", openSearch);
-document.getElementById("mobile-bottom-search").addEventListener("click", openSearch);
+document.getElementById("mobile-search").addEventListener("click", focusSideSearch);
+document.getElementById("mobile-bottom-search").addEventListener("click", focusSideSearch);
 mobileQuery.addEventListener("change", syncMobileSidebar);
 syncMobileSidebar();
 syncBookmarkCount();
 void route();
 void initSidebar();
 
-/* ---------- 검색 (Cmd/Ctrl+K) ---------- */
+/* ---------- 사이드바 검색 (Cmd/Ctrl+K) ---------- */
 
-const searchModal = document.getElementById("search-modal");
-const searchInput = document.getElementById("search-input");
-const searchResults = document.getElementById("search-results");
-const searchClose = document.getElementById("search-close");
-const shell = document.querySelector(".shell");
-let searchIndex = null;
-let searchIndexPromise = null;
-let searchSel = 0;
+let searchSel = -1;
 let searchHits = [];
-let searchQueryToken = 0;
 
-document.getElementById("search-trigger").addEventListener("click", openSearch);
-searchClose.addEventListener("click", closeSearch);
 document.addEventListener("keydown", (e) => {
   if (
-    document.getElementById("settings-dialog")?.open &&
+    settingsDialog?.open &&
     (e.metaKey || e.ctrlKey) &&
     e.key.toLowerCase() === "k"
   ) {
     e.preventDefault();
     return;
   }
-  if (!searchModal.hidden && e.key === "Tab") {
-    e.preventDefault();
-    if (e.shiftKey) {
-      (document.activeElement === searchInput ? searchClose : searchInput).focus();
-    } else {
-      (document.activeElement === searchClose ? searchInput : searchClose).focus();
-    }
-    return;
-  }
   if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
     e.preventDefault();
-    searchModal.hidden ? openSearch() : closeSearch();
-  } else if (e.key === "Escape" && !searchModal.hidden) {
-    closeSearch();
+    focusSideSearch();
   } else if (e.key === "Escape" && sidePanel.classList.contains("mobile-open")) {
     closeMobileSidebar();
   }
 });
-searchModal.addEventListener("click", (e) => {
-  if (e.target === searchModal) closeSearch();
-});
 
-let searchOpener = null; // 닫을 때 포커스를 되돌릴 직전 요소
-
-function openSearch() {
-  searchOpener = document.activeElement;
-  closeMobileSidebar(false);
-  searchModal.hidden = false;
-  shell.inert = true;
-  searchInput.setAttribute("aria-expanded", "true");
-  document.getElementById("search-trigger").setAttribute("aria-expanded", "true");
-  document.getElementById("mobile-search").setAttribute("aria-expanded", "true");
-  document.getElementById("mobile-bottom-search").setAttribute("aria-expanded", "true");
-  searchInput.value = "";
-  searchInput.removeAttribute("aria-activedescendant");
-  searchResults.innerHTML = `<p class="sr-hint">입력하여 검색하기 — 나선 제목 · 태그 · Layer 본문 · 질문</p>`;
-  searchInput.focus();
-  void buildIndex().catch(() => {}); // 백그라운드에서 미리 적재
-}
-
-function closeSearch() {
-  searchQueryToken += 1;
-  searchModal.hidden = true;
-  shell.inert = false;
-  searchInput.setAttribute("aria-expanded", "false");
-  searchInput.removeAttribute("aria-activedescendant");
-  document.getElementById("search-trigger").setAttribute("aria-expanded", "false");
-  document.getElementById("mobile-search").setAttribute("aria-expanded", "false");
-  document.getElementById("mobile-bottom-search").setAttribute("aria-expanded", "false");
-  // 포커스 복귀 — 트리거(또는 직전 요소)로 되돌린다
-  const back = searchOpener instanceof HTMLElement ? searchOpener : document.getElementById("search-trigger");
-  back?.focus();
-  searchOpener = null;
+function focusSideSearch() {
+  if (mobileQuery.matches) {
+    openMobileSidebar();
+  } else if (desktopSidebarCollapsed()) {
+    setDesktopSidebar(false);
+  }
+  requestAnimationFrame(() => sideSearchInput.focus());
 }
 
 /* ---------- 설정 ---------- */
@@ -630,6 +512,15 @@ const settingsDialog = document.getElementById("settings-dialog");
 const settingsClose = document.getElementById("settings-close");
 const themeColor = document.getElementById("theme-color");
 const themeInputs = [...document.querySelectorAll('input[name="helix-theme"]')];
+const desktopApi = window.helixDesktop;
+const desktopSettings = document.getElementById("desktop-settings");
+const desktopVersion = document.getElementById("desktop-version");
+const desktopUpdateStatus = document.getElementById("desktop-update-status");
+const desktopUpdateButton = document.getElementById("desktop-update-button");
+const desktopDataRoot = document.getElementById("desktop-data-root");
+const desktopDataReveal = document.getElementById("desktop-data-reveal");
+const desktopDataChange = document.getElementById("desktop-data-change");
+let desktopUpdate = null;
 
 function currentTheme() {
   return root.dataset.theme === "dark" ? "dark" : "light";
@@ -638,7 +529,7 @@ function currentTheme() {
 function syncThemeControls() {
   const theme = currentTheme();
   for (const input of themeInputs) input.checked = input.value === theme;
-  themeColor.content = theme === "dark" ? "#1b2420" : "#f7f8f5";
+  themeColor.content = theme === "dark" ? "#1e1f20" : "#f7f7f6";
 }
 
 function applyTheme(theme, persist = true) {
@@ -651,7 +542,6 @@ function applyTheme(theme, persist = true) {
 }
 
 function openSettings() {
-  if (!searchModal.hidden) closeSearch();
   closeMobileSidebar(false);
   syncThemeControls();
   settingsTrigger.setAttribute("aria-expanded", "true");
@@ -661,6 +551,77 @@ function openSettings() {
 
 function closeSettings() {
   if (settingsDialog.open) settingsDialog.close();
+}
+
+function paintDesktopUpdate(result) {
+  desktopUpdate = result;
+  desktopUpdateButton.disabled = false;
+  if (result?.updateAvailable) {
+    desktopUpdateButton.dataset.mode = "install";
+    desktopUpdateButton.textContent = `v${result.latest} 받기`;
+    desktopUpdateStatus.textContent = `새 버전 v${result.latest}을 받을 수 있습니다.`;
+    return;
+  }
+  desktopUpdateButton.dataset.mode = "check";
+  desktopUpdateButton.textContent = "다시 확인";
+  desktopUpdateStatus.textContent = result?.error
+    ? `확인하지 못했습니다. ${result.error}`
+    : `v${result?.current ?? ""} 최신 버전입니다.`;
+}
+
+async function initDesktopSettings() {
+  if (!desktopApi) return;
+  desktopSettings.hidden = false;
+  try {
+    const info = await desktopApi.getInfo();
+    desktopVersion.textContent = `v${info.version}`;
+    desktopDataRoot.textContent = info.dataRoot;
+    desktopDataRoot.title = info.dataRoot;
+    paintDesktopUpdate(await desktopApi.checkForUpdate(false));
+  } catch (error) {
+    desktopUpdateStatus.textContent = `앱 정보를 불러오지 못했습니다. ${error?.message ?? error}`;
+  }
+}
+
+if (desktopApi) {
+  desktopUpdateButton.addEventListener("click", async () => {
+    desktopUpdateButton.disabled = true;
+    if (desktopUpdateButton.dataset.mode !== "install") {
+      desktopUpdateStatus.textContent = "새 버전을 확인하는 중…";
+      paintDesktopUpdate(await desktopApi.checkForUpdate(true));
+      return;
+    }
+    desktopUpdateStatus.textContent = "업데이트를 안전하게 받는 중…";
+    const result = await desktopApi.installUpdate();
+    if (!result?.ok) {
+      desktopUpdateButton.disabled = false;
+      desktopUpdateStatus.textContent = `업데이트하지 못했습니다. ${result?.error ?? "다시 시도해 주세요."}`;
+    } else if (result.mode === "browser") {
+      desktopUpdateButton.disabled = false;
+      desktopUpdateStatus.textContent = "현재 환경에서는 릴리스 페이지에서 설치해 주세요.";
+    } else {
+      desktopUpdateStatus.textContent = "검증을 마쳤습니다. 앱을 교체하고 다시 실행합니다.";
+    }
+  });
+  desktopDataReveal.addEventListener("click", () => desktopApi.revealDataRoot());
+  desktopDataChange.addEventListener("click", async () => {
+    const result = await desktopApi.chooseDataRoot();
+    if (result?.canceled) return;
+    desktopDataRoot.textContent = result.dataRoot;
+    desktopDataRoot.title = result.dataRoot;
+    if (
+      result.restartRequired &&
+      window.confirm("새 데이터 폴더를 사용하려면 Helix를 다시 시작해야 합니다. 지금 다시 시작할까요?")
+    ) {
+      await desktopApi.restart();
+    }
+  });
+  desktopApi.onUpdateProgress(({ percent }) => {
+    desktopUpdateStatus.textContent =
+      percent == null ? "업데이트를 받는 중…" : `업데이트를 받는 중… ${percent}%`;
+  });
+  desktopApi.onUpdateAvailable((result) => paintDesktopUpdate(result));
+  void initDesktopSettings();
 }
 
 settingsTrigger.addEventListener("click", openSettings);
@@ -706,153 +667,115 @@ window.addEventListener("storage", (event) => {
 });
 syncThemeControls();
 
-async function buildIndex() {
-  if (searchIndex) return searchIndex;
-  if (searchIndexPromise) return searchIndexPromise;
-  searchIndexPromise = (async () => {
-    const subjects = await getJSON("/api/subjects");
-    const details = await Promise.all(
-      subjects.map((s) => getJSON(`/api/subjects/${encodeURIComponent(s.id)}`)),
-    );
-    const next = [];
-    for (const s of details) {
-      const title = displayTitle(s.title);
-      const base = `#/s/${encodeURIComponent(s.id)}`;
-      next.push({ kind: "나선", k: "subject", title, text: s.tags.join(" · "), route: base });
-      for (const l of s.layers) {
-        const body = l.content.sections
-          .map((sec) => `${sec.heading ?? ""} ${sec.body}`)
-          .join(" ");
-        next.push({
-          kind: `L${l.index}`,
-          k: "layer",
-          title,
-          text: plain(body).replace(/\s+/g, " ").trim(),
-          route: `${base}?layer=${l.index}`,
-        });
-      }
-      for (const q of s.questions) {
-        next.push({
-          kind: q.status === "open" ? "질문" : "해소",
-          k: q.status === "open" ? "question" : "resolved",
-          title,
-          text: plain(q.text),
-          route: `${base}?layer=${q.raisedAtLayer}`,
-        });
-      }
-    }
-    searchIndex = next;
-    return next;
-  })();
-  try {
-    return await searchIndexPromise;
-  } finally {
-    searchIndexPromise = null;
-  }
-}
+sideSearchInput.addEventListener("input", () => {
+  searchSel = -1;
+  paintSidebarResults();
+});
 
-searchInput.addEventListener("input", async () => {
-  const token = ++searchQueryToken;
-  const q = searchInput.value.trim().toLowerCase();
+sideSearchInput.addEventListener("keydown", (event) => {
+  if (event.isComposing) return;
+  if (
+    (event.key === "ArrowDown" ||
+      event.key === "ArrowUp") &&
+    searchHits.length
+  ) {
+    event.preventDefault();
+    if (event.key === "ArrowDown") {
+      searchSel = searchSel < 0 ? 0 : Math.min(searchSel + 1, searchHits.length - 1);
+    } else {
+      searchSel = searchSel < 0 ? 0 : Math.max(searchSel - 1, 0);
+    }
+    paintSidebarResults();
+  } else if (event.key === "Enter" && searchHits.length) {
+    event.preventDefault();
+    const hit = searchHits[searchSel < 0 ? 0 : searchSel];
+    if (mobileQuery.matches) closeMobileSidebar(false);
+    if (event.metaKey || event.ctrlKey) openInNewTab(hit.route);
+    else go(hit.route);
+  } else if (event.key === "Escape" && sideSearchInput.value) {
+    event.preventDefault();
+    event.stopPropagation();
+    sideSearchInput.value = "";
+    searchSel = -1;
+    paintSidebarResults();
+  }
+});
+
+function paintSidebarResults() {
+  const q = sideSearchInput.value.trim().toLocaleLowerCase();
+  sideSearchInput.removeAttribute("aria-activedescendant");
+  sideSearchResults.removeAttribute("aria-busy");
+  sideSearchStatus.classList.remove("sr-only");
+  sideSearchStatus.textContent = "";
+
   if (!q) {
     searchHits = [];
-    searchResults.removeAttribute("aria-busy");
-    searchInput.removeAttribute("aria-activedescendant");
-    searchResults.innerHTML = `<p class="sr-hint">입력하여 검색하기 — 나선 제목 · 태그 · Layer 본문 · 질문</p>`;
+    searchSel = -1;
+    sideSearchResults.replaceChildren();
+    sideSearchResults.hidden = true;
+    sideSearchInput.setAttribute("aria-expanded", "false");
     return;
   }
-  searchResults.setAttribute("aria-busy", "true");
-  let index;
-  try {
-    index = await buildIndex();
-  } catch {
-    if (token !== searchQueryToken || searchModal.hidden) return;
-    searchIndex = null;
-    searchResults.removeAttribute("aria-busy");
-    searchResults.innerHTML = `<p class="sr-hint">검색 색인을 불러오지 못했습니다. 다시 입력해 주세요.</p>`;
+
+  if (!sidebarSearchReady) {
+    searchHits = [];
+    sideSearchResults.hidden = true;
+    sideSearchResults.setAttribute("aria-busy", "true");
+    sideSearchInput.setAttribute("aria-expanded", "false");
+    sideSearchStatus.textContent = "나선을 불러오는 중…";
     return;
   }
-  if (
-    token !== searchQueryToken ||
-    searchModal.hidden ||
-    searchInput.value.trim().toLowerCase() !== q
-  ) return;
-  const rank = { subject: 0, question: 1, resolved: 2, layer: 3 };
-  searchHits = index
-    .map((entry) => {
-      const inTitle = entry.title.toLowerCase().indexOf(q);
-      const inText = entry.text.toLowerCase().indexOf(q);
-      if (inTitle === -1 && inText === -1) return null;
-      return { ...entry, score: (inTitle !== -1 ? 0 : 10) + rank[entry.k] };
-    })
-    .filter(Boolean)
-    .sort((a, b) => a.score - b.score)
-    .slice(0, 30);
-  searchSel = 0;
-  searchResults.removeAttribute("aria-busy");
-  paintResults(q);
-});
 
-searchInput.addEventListener("keydown", (e) => {
-  if (e.key === "ArrowDown") {
-    e.preventDefault();
-    searchSel = Math.min(searchSel + 1, searchHits.length - 1);
-    paintResults(searchInput.value.trim().toLowerCase());
-  } else if (e.key === "ArrowUp") {
-    e.preventDefault();
-    searchSel = Math.max(searchSel - 1, 0);
-    paintResults(searchInput.value.trim().toLowerCase());
-  } else if (e.key === "Enter" && searchHits[searchSel]) {
-    openHit(searchHits[searchSel], e.metaKey || e.ctrlKey);
-  }
-});
-
-searchResults.addEventListener("click", (e) => {
-  const row = e.target.closest(".sr-row");
-  if (row) openHit(searchHits[Number(row.dataset.hit)], e.metaKey || e.ctrlKey);
-});
-
-function openHit(hit, newTab) {
-  if (!hit) return;
-  closeSearch();
-  if (newTab) openInNewTab(hit.route);
-  else go(hit.route);
-}
-
-function paintResults(q) {
-  if (searchHits.length === 0) {
-    searchInput.removeAttribute("aria-activedescendant");
-    searchResults.innerHTML = `<p class="sr-hint">일치하는 결과가 없습니다.</p>`;
+  if (sidebarSearchFailed) {
+    searchHits = [];
+    sideSearchResults.hidden = true;
+    sideSearchInput.setAttribute("aria-expanded", "false");
+    sideSearchStatus.textContent = "검색 목록을 불러오지 못했습니다.";
     return;
   }
-  searchResults.innerHTML = searchHits
-    .map((h, i) => {
-      const inTitle = h.title.toLowerCase().indexOf(q);
-      const snippet = inTitle !== -1 ? h.text.slice(0, 90) : excerpt(h.text, q);
-      return `
-      <div class="sr-row${i === searchSel ? " sel" : ""}" data-hit="${i}"
-           id="search-option-${i}" role="option" aria-selected="${i === searchSel}">
-        <span class="sr-kind k-${h.k}">${esc(h.kind)}</span>
-        <span class="sr-main">
-          <span class="sr-title">${inTitle !== -1 ? mark(h.title, q) : esc(h.title)}</span>
-          <span class="sr-snippet">${inTitle !== -1 ? esc(snippet) : mark(snippet, q)}</span>
-        </span>
-      </div>`;
-    })
+
+  searchHits = filterSidebarSubjects(sidebarSubjects, q);
+
+  if (!searchHits.length) {
+    searchSel = -1;
+    sideSearchResults.replaceChildren();
+    sideSearchResults.hidden = true;
+    sideSearchInput.setAttribute("aria-expanded", "false");
+    sideSearchStatus.textContent = "일치하는 나선이 없습니다.";
+    return;
+  }
+
+  if (searchSel < 0) searchSel = 0;
+  if (searchSel >= searchHits.length) searchSel = searchHits.length - 1;
+  sideSearchResults.innerHTML = searchHits
+    .map(
+      (hit, index) => `
+        <a class="side-item side-search-result${index === searchSel ? " sel" : ""}"
+          id="side-search-option-${index}" data-sid="${esc(hit.id)}"
+          href="${hit.route}" role="option" tabindex="-1"
+          aria-selected="${index === searchSel}">
+          <span class="si-title">${mark(hit.title, q)}</span>
+        </a>`,
+    )
     .join("");
-  searchInput.setAttribute("aria-activedescendant", `search-option-${searchSel}`);
-  searchResults.querySelector(".sr-row.sel")?.scrollIntoView({ block: "nearest" });
-}
-
-function excerpt(text, q) {
-  const i = text.toLowerCase().indexOf(q);
-  if (i === -1) return text.slice(0, 90);
-  const from = Math.max(0, i - 32);
-  return (from > 0 ? "…" : "") + text.slice(from, i + q.length + 56);
+  sideSearchResults.hidden = false;
+  sideSearchInput.setAttribute("aria-expanded", "true");
+  sideSearchStatus.classList.add("sr-only");
+  sideSearchStatus.textContent = `검색 결과 ${searchHits.length}개`;
+  if (searchSel >= 0) {
+    sideSearchInput.setAttribute(
+      "aria-activedescendant",
+      `side-search-option-${searchSel}`,
+    );
+    sideSearchResults
+      .querySelector(".side-search-result.sel")
+      ?.scrollIntoView({ block: "nearest" });
+  }
+  markSidebar();
 }
 
 function mark(text, q) {
-  const i = text.toLowerCase().indexOf(q);
+  const i = text.toLocaleLowerCase().indexOf(q);
   if (i === -1) return esc(text);
   return `${esc(text.slice(0, i))}<mark>${esc(text.slice(i, i + q.length))}</mark>${esc(text.slice(i + q.length))}`;
 }
@@ -1042,9 +965,6 @@ async function renderMap(repoKey, routeEpoch) {
       : undefined;
     headHTML = `
       <header class="map-heading">
-        <a class="back-link map-back" href="#/map" aria-label="전체 나선 지도로 돌아가기">
-          <span aria-hidden="true">←</span><span>전체 지도</span>
-        </a>
         <h1 class="page-title">${esc(label)}</h1>
       </header>`;
     ariaLabel = `${label} 나선 지도: 주제 ${subs.length}개.${selectedChapterLabel ? ` 현재 ${selectedChapterLabel} 챕터에 초점.` : ""} 왼쪽과 오른쪽 화살표 키로 노드 이동, Enter로 열기. 아래 목록으로도 탐색할 수 있습니다.`;
@@ -1148,6 +1068,7 @@ async function renderMap(repoKey, routeEpoch) {
       focus,
       focusGroup: repoKey ? chapterFocus : undefined,
       nodeRoute,
+      parentRoute: repoKey ? "#/map" : undefined,
       // 전체 지도에서만: 나선(레포) 원판 클릭 → 그 레포의 나선 지도로
       groupRoute: repoKey ? undefined : (key) => `#/map/${encodeURIComponent(key)}`,
       onNavigate: (route, newTab) => (newTab ? openInNewTab(route) : go(route)),
@@ -1245,13 +1166,17 @@ async function renderTimeline(id, token) {
       </div>
     </details>
     <h2 class="timeline-title">기록</h2>
-    <div class="timeline" style="--gutter-w:${showStrands ? gutterW : 0}px">
+    <div class="timeline">
       ${showStrands ? `<div class="strand-gutter"></div>` : ""}
       <div class="layers-col">
         ${s.layers.map((l) => layerCard(l, qById, l.index === latest?.index)).join("")}
       </div>
     </div>`;
 
+  app.querySelector(".timeline").style.setProperty(
+    "--gutter-w",
+    `${showStrands ? gutterW : 0}px`,
+  );
   const bookmarkButton = app.querySelector("[data-bookmark-id]");
   paintBookmarkButton(bookmarkButton, s.id);
   bookmarkButton.addEventListener("click", () => {

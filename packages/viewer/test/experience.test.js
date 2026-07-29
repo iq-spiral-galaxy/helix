@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   filterOpenQuestions,
+  filterSidebarSubjects,
   parseBookmarkIds,
   selectHomeFocus,
   selectBookmarkItems,
@@ -114,6 +115,36 @@ describe("Helix viewer experience model", () => {
     expect(bookmarked.map(({ id, route }) => ({ id, route }))).toEqual([
       { id: "deeper", route: "#/s/deeper" },
       { id: "a/b", route: "#/s/a%2Fb" },
+    ]);
+  });
+
+  it("빈 검색에는 전체 목록을 노출하지 않고 입력할 때만 Subject를 평면 검색한다", () => {
+    const searchable = [
+      {
+        id: "tag-match",
+        title: "다른 제목",
+        tags: ["unit-testing"],
+        lastTouched: "2026-06-10",
+      },
+      {
+        id: "unit/a",
+        title: "01. Unit Basics",
+        tags: [],
+        lastTouched: "2026-05-10",
+      },
+    ];
+
+    expect(filterSidebarSubjects(searchable, "")).toEqual([]);
+    expect(filterSidebarSubjects(searchable, "unit").map((item) => item.id)).toEqual([
+      "unit/a",
+      "tag-match",
+    ]);
+    expect(filterSidebarSubjects(searchable, "unit", 1)).toEqual([
+      expect.objectContaining({
+        id: "unit/a",
+        title: "Unit Basics",
+        route: "#/s/unit%2Fa",
+      }),
     ]);
   });
 });
