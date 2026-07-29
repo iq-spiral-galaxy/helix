@@ -32,3 +32,5 @@ jobs:
         run: pnpm test
       - name: Build
         run: pnpm build
+      - name: Smoke-test desktop startup
+        run: xvfb-run -a node scripts/smoke-desktop.mjs --development

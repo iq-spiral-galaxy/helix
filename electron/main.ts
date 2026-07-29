@@ -26,7 +26,7 @@ import {
   stat,
   writeFile,
 } from "node:fs/promises";
-import { homedir } from "node:os";
+import { homedir, tmpdir } from "node:os";
 import { basename, dirname, join, sep } from "node:path";
 import { spawn } from "node:child_process";
 import { once } from "node:events";
@@ -49,8 +49,18 @@ const RELEASES_URL = "https://github.com/iq-spiral-galaxy/helix/releases/latest"
 const RELEASES_API =
   "https://api.github.com/repos/iq-spiral-galaxy/helix/releases/latest";
 const RELEASE_CACHE_MS = 10 * 60 * 1000;
+const DESKTOP_SMOKE_TEST = process.env.HELIX_DESKTOP_SMOKE === "1";
+const DESKTOP_SMOKE_TIMEOUT_MS = 20_000;
 
 app.setName(PRODUCT_NAME);
+if (DESKTOP_SMOKE_TEST) {
+  const smokeUserData = join(
+    tmpdir(),
+    `helix-desktop-smoke-${process.pid}`,
+  );
+  mkdirSync(smokeUserData, { recursive: true });
+  app.setPath("userData", smokeUserData);
+}
 protocol.registerSchemesAsPrivileged([
   {
     scheme: "helix",
@@ -95,6 +105,8 @@ let dataRoot = "";
 let updateCandidate: UpdateCandidate | null = null;
 let releaseCacheAt = 0;
 let updateBusy = false;
+let desktopSmokeTimer: ReturnType<typeof setTimeout> | undefined;
+let desktopSmokeFinished = false;
 
 function readDesktopConfig(): DesktopConfig {
   try {
@@ -110,6 +122,7 @@ function writeDesktopConfig(config: DesktopConfig): void {
 }
 
 function resolveDataRoot(): string {
+  if (DESKTOP_SMOKE_TEST) return join(USER_DATA, "notes");
   const saved = readDesktopConfig().dataRoot;
   const candidates = [
     saved,
@@ -133,6 +146,87 @@ function safeExternalUrl(value: string): boolean {
   } catch {
     return false;
   }
+}
+
+function finishDesktopSmoke(exitCode: number, message: string): void {
+  if (!DESKTOP_SMOKE_TEST || desktopSmokeFinished) return;
+  desktopSmokeFinished = true;
+  if (desktopSmokeTimer) clearTimeout(desktopSmokeTimer);
+  const line =
+    exitCode === 0
+      ? `HELIX_DESKTOP_SMOKE_READY ${message}`
+      : `HELIX_DESKTOP_SMOKE_FAILED ${message}`;
+  const stream = exitCode === 0 ? process.stdout : process.stderr;
+  const fallback = setTimeout(() => app.exit(exitCode), 1_000);
+  stream.write(`${line}\n`, () => {
+    clearTimeout(fallback);
+    app.exit(exitCode);
+  });
+}
+
+function armDesktopSmoke(window: BrowserWindow): void {
+  if (!DESKTOP_SMOKE_TEST) return;
+  desktopSmokeTimer = setTimeout(() => {
+    finishDesktopSmoke(1, "Timed out while loading helix://app/");
+  }, DESKTOP_SMOKE_TIMEOUT_MS);
+  window.webContents.on(
+    "did-fail-load",
+    (_event, errorCode, errorDescription, validatedURL, isMainFrame) => {
+      if (!isMainFrame) return;
+      finishDesktopSmoke(
+        1,
+        `${validatedURL} failed (${errorCode}: ${errorDescription})`,
+      );
+    },
+  );
+  window.webContents.once("did-finish-load", () => {
+    void window.webContents
+      .executeJavaScript(`(async () => {
+        const appRoot = document.querySelector("#app");
+        const hasDesktopBridge =
+          typeof window.helixDesktop?.getInfo === "function";
+        const desktopInfo = hasDesktopBridge
+          ? await window.helixDesktop.getInfo()
+          : null;
+        const deadline = Date.now() + 5_000;
+        while (appRoot?.childElementCount === 0 && Date.now() < deadline) {
+          await new Promise((resolve) => setTimeout(resolve, 50));
+        }
+        return {
+          protocol: location.protocol,
+          title: document.title,
+          rendered: Boolean(appRoot?.childElementCount),
+          hasDesktopBridge,
+          desktopVersion: desktopInfo?.version ?? null
+        };
+      })()`)
+      .then((state: {
+        protocol: string;
+        title: string;
+        rendered: boolean;
+        hasDesktopBridge: boolean;
+        desktopVersion: string | null;
+      }) => {
+        const ready =
+          state.protocol === "helix:" &&
+          state.title.includes("Helix") &&
+          state.rendered &&
+          state.hasDesktopBridge &&
+          state.desktopVersion === __HELIX_VERSION__;
+        finishDesktopSmoke(
+          ready ? 0 : 1,
+          ready
+            ? JSON.stringify(state)
+            : `Invalid renderer state ${JSON.stringify(state)}`,
+        );
+      })
+      .catch((error: unknown) => {
+        finishDesktopSmoke(
+          1,
+          error instanceof Error ? error.message : String(error),
+        );
+      });
+  });
 }
 
 async function registerHelixProtocol(): Promise<void> {
@@ -187,11 +281,19 @@ function createMainWindow(): BrowserWindow {
     event.preventDefault();
     if (safeExternalUrl(url)) void shell.openExternal(url);
   });
-  window.once("ready-to-show", () => window.show());
+  if (!DESKTOP_SMOKE_TEST) {
+    window.once("ready-to-show", () => window.show());
+  }
   window.on("closed", () => {
     if (mainWindow === window) mainWindow = null;
   });
-  void window.loadURL("helix://app/");
+  armDesktopSmoke(window);
+  void window.loadURL("helix://app/").catch((error: unknown) => {
+    finishDesktopSmoke(
+      1,
+      error instanceof Error ? error.message : String(error),
+    );
+  });
   return window;
 }
 
@@ -616,6 +718,7 @@ async function boot(): Promise<void> {
     callback(false);
   });
   mainWindow = createMainWindow();
+  if (DESKTOP_SMOKE_TEST) return;
   await checkPendingUpdate();
   setTimeout(() => {
     void checkForUpdate(false).then((result) => {
@@ -640,6 +743,13 @@ if (!app.requestSingleInstanceLock()) {
       await boot();
     })
     .catch((error) => {
+      if (DESKTOP_SMOKE_TEST) {
+        finishDesktopSmoke(
+          1,
+          error instanceof Error ? error.message : String(error),
+        );
+        return;
+      }
       dialog.showErrorBox(
         "Helix 시작 실패",
         error instanceof Error ? error.message : String(error),
