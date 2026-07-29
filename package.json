@@ -8,7 +8,7 @@
   "scripts": {
     "build:packages": "pnpm -r build",
     "build": "pnpm build:packages && pnpm desktop:bundle",
-    "test": "pnpm -r test && pnpm desktop:test",
+    "test": "pnpm build:packages && pnpm -r test && pnpm desktop:test",
     "desktop:typecheck": "pnpm --filter @iq-helix/viewer exec tsc -p ../../electron/tsconfig.json",
     "desktop:test": "pnpm desktop:typecheck && node --test electron/test/*.test.mjs",
     "desktop:bundle": "node scripts/build-desktop.mjs",
