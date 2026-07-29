@@ -23,6 +23,7 @@ const K_REP = 0.8;
 const REP_CUT2 = 100;
 const K_LINK = 0.010;
 const DAMP = 0.85;
+const ROT = 0.0009;     // 약 116초/회전 — 사용자가 재생했을 때만 천천히 움직인다.
 const PARK_EPS = 0.015;
 const LABEL_BAND = 12;  // 나선 위 라벨이 차지하는 여유 (배치 간격 계산에 포함)
 
@@ -34,6 +35,7 @@ export function mount(canvas, data, opts = {}) {
   const nodeRoute = opts.nodeRoute ?? ((id) => `#/s/${encodeURIComponent(id)}`);
   // 나선(그룹) 자체를 클릭해 안으로 들어가는 라우트 — 전체 지도에서만 주입됨
   const groupRoute = opts.groupRoute ?? null;
+  const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
   let P = readPalette();
 
   // ── 로드맵별 그룹핑 (레포 = 나선) ──
@@ -183,7 +185,8 @@ export function mount(canvas, data, opts = {}) {
   const toLocal = (sx, sy) => [(sx - cx - panX) / eff(), (sy - cy - panY) / eff()];
 
   // ── 상태 ──
-  const angle = 0;
+  let angle = 0;
+  let motion = false;
   let hot = null;
   let hotGroup = null; // 호버 중인 나선(그룹) — groupRoute 있을 때만 사용
   let pinned = opts.focus && byId.has(opts.focus) ? opts.focus : null;
@@ -202,6 +205,8 @@ export function mount(canvas, data, opts = {}) {
   // 명시적 지도 제어 — 휠/트랙패드가 없는 환경과 키보드 사용자도 동일한 기능을 쓴다.
   const mapControls = document.createElement("div");
   mapControls.className = "map-controls";
+  mapControls.setAttribute("role", "group");
+  mapControls.setAttribute("aria-label", "지도 제어");
   const zoomOut = document.createElement("button");
   zoomOut.type = "button";
   zoomOut.textContent = "−";
@@ -214,7 +219,32 @@ export function mount(canvas, data, opts = {}) {
   zoomIn.type = "button";
   zoomIn.textContent = "+";
   zoomIn.setAttribute("aria-label", "지도 확대");
-  mapControls.append(zoomOut, fitAll, zoomIn);
+  const playBtn = document.createElement("button");
+  playBtn.type = "button";
+  playBtn.className = "map-play";
+  function paintPlayButton() {
+    playBtn.textContent = reduceMotion.matches
+      ? "모션 감소"
+      : motion
+        ? "Ⅱ 일시정지"
+        : "▶ 재생";
+    playBtn.setAttribute(
+      "aria-label",
+      reduceMotion.matches
+        ? "나선 애니메이션: 모션 감소 설정으로 비활성화"
+        : "나선 애니메이션",
+    );
+    playBtn.setAttribute("aria-pressed", String(motion));
+    playBtn.dataset.playing = String(motion);
+    playBtn.disabled = reduceMotion.matches;
+    playBtn.title = reduceMotion.matches
+      ? "기기의 모션 감소 설정이 켜져 있습니다"
+      : motion
+        ? "나선 애니메이션 일시 정지"
+        : "나선 애니메이션 재생";
+  }
+  paintPlayButton();
+  mapControls.append(zoomOut, fitAll, zoomIn, playBtn);
   zoomOut.addEventListener("click", () => {
     zoom = Math.max(0.45, zoom / 1.22);
     wake();
@@ -230,16 +260,43 @@ export function mount(canvas, data, opts = {}) {
     pinned = null;
     wake();
   });
+  playBtn.addEventListener("click", () => {
+    motion = !motion;
+    if (motion) pinned = null;
+    paintPlayButton();
+    onAnnounce(motion ? "나선 애니메이션을 재생합니다." : "나선 애니메이션을 일시 정지했습니다.");
+    wake();
+  });
+  const onReduceMotionChange = () => {
+    if (reduceMotion.matches) motion = false;
+    paintPlayButton();
+    wake();
+  };
+  reduceMotion.addEventListener("change", onReduceMotionChange);
   if (hostEl) hostEl.appendChild(mapControls);
 
   const interacting = () => dragNode || panning || hot != null;
+  const rotationActive = () => motion && !interacting() && pinned == null;
   const ego = () => dragNode || hot || pinned;
 
   // ── 물리 ──
   function tick(dt) {
+    if (rotationActive()) {
+      const dth = ROT * dt;
+      angle += dth;
+      const c = Math.cos(dth), s = Math.sin(dth);
+      for (const n of nodes) {
+        const rx = n.x - n._gcx, ry = n.y - n._gcy;
+        n.x = n._gcx + rx * c - ry * s;
+        n.y = n._gcy + rx * s + ry * c;
+        const vx = n.vx, vy = n.vy;
+        n.vx = vx * c - vy * s;
+        n.vy = vx * s + vy * c;
+      }
+    }
     const ca = Math.cos(angle), sa = Math.sin(angle);
     for (const n of nodes) {
-      // home = 그룹 중심 + 나선 위의 고정 로컬 좌표
+      // home = 그룹 중심 + 현재 회전각의 나선 위 로컬 좌표
       n._hx = n._gcx + (n._lx * ca - n._ly * sa);
       n._hy = n._gcy + (n._lx * sa + n._ly * ca);
       n.fx = K_HOME * (n._hx - n.x);
@@ -339,7 +396,7 @@ export function mount(canvas, data, opts = {}) {
     // 2) 각 로드맵의 작은 나선 척추 (호버 시 밝게)
     const activeGroup = hotGroup ?? focusGroup;
     for (const g of groups) {
-      ctx.strokeStyle = g.key === activeGroup ? P.soft : P.ghost;
+      ctx.strokeStyle = g.key === activeGroup ? P.accent : P.ghost;
       ctx.lineWidth = 1;
       spiralPath(g.cx, g.cy, M_TH0, g.thMax, M_A, M_B, angle);
     }
@@ -455,7 +512,7 @@ export function mount(canvas, data, opts = {}) {
     lastTs = ts;
     const maxV = tick(dt);
     draw();
-    if (!interacting() && maxV < PARK_EPS) { raf = 0; lastTs = 0; return; }
+    if (!rotationActive() && maxV < PARK_EPS) { raf = 0; lastTs = 0; return; }
     raf = requestAnimationFrame(loop);
   }
   function wake() {
@@ -644,6 +701,7 @@ export function mount(canvas, data, opts = {}) {
       raf = 0;
       ro.disconnect();
       document.removeEventListener("visibilitychange", onVis);
+      reduceMotion.removeEventListener("change", onReduceMotionChange);
       canvas.removeEventListener("pointerdown", onDown);
       canvas.removeEventListener("pointermove", onMove);
       canvas.removeEventListener("pointerup", onUp);
@@ -663,13 +721,13 @@ function readPalette() {
   const css = getComputedStyle(document.documentElement);
   const g = (name, fb) => css.getPropertyValue(name).trim() || fb;
   return {
-    paper: g("--paper", "#16181d"),
-    text: g("--text", "#e6e8ec"),
-    soft: g("--text-soft", "#9aa0aa"),
-    faint: g("--text-faint", "rgba(230,232,236,0.58)"),
-    ghost: g("--text-ghost", "rgba(230,232,236,0.34)"),
-    accent: g("--accent", "#5e9bff"),
-    link: g("--link", "#7fb39a"),
+    paper: g("--paper", "#f7f8f5"),
+    text: g("--text", "#19251e"),
+    soft: g("--text-soft", "#4d5e53"),
+    faint: g("--text-faint", "#5b6c61"),
+    ghost: g("--text-ghost", "rgba(25,37,30,0.36)"),
+    accent: g("--accent", "#1f6b49"),
+    link: g("--link", "#346b51"),
   };
 }
 function displayTitle(t) { return String(t).replace(/^\d+[.)]\s*/, ""); }

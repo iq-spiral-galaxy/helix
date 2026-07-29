@@ -553,17 +553,17 @@ const themeColor = document.getElementById("theme-color");
 const themeInputs = [...document.querySelectorAll('input[name="helix-theme"]')];
 
 function currentTheme() {
-  return root.dataset.theme === "light" ? "light" : "dark";
+  return root.dataset.theme === "dark" ? "dark" : "light";
 }
 
 function syncThemeControls() {
   const theme = currentTheme();
   for (const input of themeInputs) input.checked = input.value === theme;
-  themeColor.content = theme === "light" ? "#f6f7f9" : "#0d1117";
+  themeColor.content = theme === "dark" ? "#1b2420" : "#f7f8f5";
 }
 
 function applyTheme(theme, persist = true) {
-  root.dataset.theme = theme === "light" ? "light" : "dark";
+  root.dataset.theme = theme === "dark" ? "dark" : "light";
   if (persist) {
     try { localStorage.setItem("helix.theme", currentTheme()); } catch { /* 현재 화면에만 적용 */ }
   }
@@ -900,12 +900,10 @@ async function renderMap(repoKey, routeEpoch) {
       ? subs.find((subject) => subject.roadmapId === selectedChapter)?.roadmapTitle
       : undefined;
     headHTML = `
-      <nav class="breadcrumbs" aria-label="지도 경로">
-        <a href="#/map">전체 지도</a><span aria-hidden="true">/</span>
-        <span>${esc(label)}</span>
-        ${selectedChapterLabel ? `<span aria-hidden="true">/</span><strong>${esc(selectedChapterLabel)}</strong>` : ""}
-      </nav>
       <header class="map-heading">
+        <a class="back-link map-back" href="#/map" aria-label="전체 나선 지도로 돌아가기">
+          <span aria-hidden="true">←</span><span>전체 지도</span>
+        </a>
         <h1 class="page-title">${esc(label)}</h1>
       </header>`;
     ariaLabel = `${label} 나선 지도: 주제 ${subs.length}개.${selectedChapterLabel ? ` 현재 ${selectedChapterLabel} 챕터에 초점.` : ""} 왼쪽과 오른쪽 화살표 키로 노드 이동, Enter로 열기. 아래 목록으로도 탐색할 수 있습니다.`;
@@ -1053,21 +1051,23 @@ async function renderTimeline(id, token) {
   const rid = s.sources?.find((x) => x.kind === "spiral-buddy")?.roadmapId;
   const repository = repoKeyOf(rid);
   const chapter = rid ? chapterLabelOf(rid) : "분류되지 않은 나선";
+  const backRoute = rid
+    ? `#/map/${encodeURIComponent(repository)}?chapter=${encodeURIComponent(rid)}&focus=${encodeURIComponent(id)}`
+    : "#/";
+  const backLabel = rid ? `${chapter} 지도` : "나선 일지";
 
   setTabTitle(displayTitle(s.title));
 
   app.innerHTML = `
     <nav class="breadcrumbs" aria-label="나선 경로">
-      <a href="#/">나선 일지</a>
-      ${rid ? `<span aria-hidden="true">/</span><a href="#/map/${encodeURIComponent(repository)}?chapter=${encodeURIComponent(rid)}">${esc(repoLabelOf(repository))}</a><span aria-hidden="true">/</span><span>${esc(chapter)}</span>` : ""}
+      <a class="back-link" href="${backRoute}" aria-label="${esc(backLabel)}로 돌아가기">
+        <span aria-hidden="true">←</span><span>${esc(backLabel)}</span>
+      </a>
     </nav>
     <header class="subject-mast">
       <div>
         <h1 class="page-title">${esc(displayTitle(s.title))}</h1>
         <p class="subject-meta">Layer ${s.layers.length}${open.length ? ` · 열린 질문 ${open.length}` : ""}</p>
-      </div>
-      <div class="subject-actions">
-        <a href="#/map/${encodeURIComponent(repository)}${rid ? `?chapter=${encodeURIComponent(rid)}&focus=${encodeURIComponent(id)}` : `?focus=${encodeURIComponent(id)}`}">지도에서 보기</a>
       </div>
     </header>
     ${

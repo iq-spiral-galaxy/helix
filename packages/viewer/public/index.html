@@ -4,20 +4,20 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Helix</title>
-  <meta name="theme-color" id="theme-color" content="#0d1117" />
+  <meta name="theme-color" id="theme-color" content="#f7f8f5" />
   <script>
     (() => {
       try {
         const theme = localStorage.getItem("helix.theme");
-        const resolvedTheme = theme === "light" ? "light" : "dark";
+        const resolvedTheme = theme === "dark" ? "dark" : "light";
         document.documentElement.dataset.theme = resolvedTheme;
         document.getElementById("theme-color").content =
-          resolvedTheme === "light" ? "#f6f7f9" : "#0d1117";
+          resolvedTheme === "dark" ? "#1b2420" : "#f7f8f5";
         if (localStorage.getItem("helix.sidebar") === "collapsed") {
           document.documentElement.dataset.sidebar = "collapsed";
         }
       } catch {
-        document.documentElement.dataset.theme = "dark";
+        document.documentElement.dataset.theme = "light";
       }
     })();
   </script>
@@ -116,14 +116,14 @@
         <legend>테마</legend>
         <div class="theme-options">
           <label class="theme-option">
-            <input type="radio" name="helix-theme" value="dark" />
-            <span class="theme-preview theme-preview-dark" aria-hidden="true"><i></i></span>
-            <span>다크</span>
-          </label>
-          <label class="theme-option">
             <input type="radio" name="helix-theme" value="light" />
             <span class="theme-preview theme-preview-light" aria-hidden="true"><i></i></span>
             <span>라이트</span>
+          </label>
+          <label class="theme-option">
+            <input type="radio" name="helix-theme" value="dark" />
+            <span class="theme-preview theme-preview-dark" aria-hidden="true"><i></i></span>
+            <span>다크</span>
           </label>
         </div>
       </fieldset>
