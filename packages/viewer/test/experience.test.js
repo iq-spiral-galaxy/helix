@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
   filterOpenQuestions,
-  filterSidebarSubjects,
+  filterSidebarItems,
+  normalizeSidebarQuery,
   parseBookmarkIds,
   selectHomeFocus,
   selectBookmarkItems,
@@ -118,7 +119,7 @@ describe("Helix viewer experience model", () => {
     ]);
   });
 
-  it("빈 검색에는 전체 목록을 노출하지 않고 입력할 때만 Subject를 평면 검색한다", () => {
+  it("빈 검색에는 전체 목록을 노출하지 않고 입력할 때만 나선을 검색한다", () => {
     const searchable = [
       {
         id: "tag-match",
@@ -134,17 +135,76 @@ describe("Helix viewer experience model", () => {
       },
     ];
 
-    expect(filterSidebarSubjects(searchable, "")).toEqual([]);
-    expect(filterSidebarSubjects(searchable, "unit").map((item) => item.id)).toEqual([
+    expect(filterSidebarItems(searchable, {}, "")).toEqual([]);
+    expect(filterSidebarItems(searchable, {}, "unit").map((item) => item.id)).toEqual([
       "unit/a",
       "tag-match",
     ]);
-    expect(filterSidebarSubjects(searchable, "unit", 1)).toEqual([
+    expect(filterSidebarItems(searchable, {}, "unit", 1)).toEqual([
       expect.objectContaining({
         id: "unit/a",
+        kind: "subject",
         title: "Unit Basics",
         route: "#/s/unit%2Fa",
       }),
     ]);
+  });
+
+  it("레포·챕터·나선을 함께 검색하고 db 별칭과 구분자를 정규화한다", () => {
+    const searchable = [
+      {
+        id: "page-block-extent",
+        title: "Page · Block · Extent — InnoDB 물리 저장 구조",
+        tags: ["innodb"],
+        lastTouched: "2026-06-01",
+      },
+    ];
+    const hierarchy = {
+      repositories: [
+        {
+          id: "database-internals",
+          title: "Database Internals",
+          subjectCount: 1,
+          chapters: [
+            {
+              id: "database-internals/storage-and-file-structure",
+              repositoryId: "database-internals",
+              title: "Storage And File Structure",
+              subjectIds: ["page-block-extent"],
+            },
+          ],
+        },
+      ],
+    };
+
+    expect(normalizeSidebarQuery(" DB_internals ")).toBe("database internals");
+    expect(
+      filterSidebarItems(searchable, hierarchy, "db-internals").map(
+        ({ kind, id, route }) => ({ kind, id, route }),
+      ),
+    ).toEqual([
+      {
+        kind: "repository",
+        id: "database-internals",
+        route: "#/map/database-internals",
+      },
+      {
+        kind: "chapter",
+        id: "database-internals/storage-and-file-structure",
+        route:
+          "#/map/database-internals?chapter=database-internals%2Fstorage-and-file-structure",
+      },
+      {
+        kind: "subject",
+        id: "page-block-extent",
+        route: "#/s/page-block-extent",
+      },
+    ]);
+    expect(
+      filterSidebarItems(searchable, hierarchy, "storage_and file-structure")[0],
+    ).toMatchObject({
+      kind: "chapter",
+      id: "database-internals/storage-and-file-structure",
+    });
   });
 });

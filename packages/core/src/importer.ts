@@ -179,10 +179,19 @@ function parseOldNote(
   }
   if (!fm || typeof fm !== "object") return { reason: "frontmatter가 비어 있음" };
 
-  const topic: string | undefined = fm.topic ?? fm.title;
-  if (!topic) return { reason: "topic/title 없음" };
+  const topic = stringValue(fm.topic ?? fm.title ?? fm.chapter);
+  if (!topic) return { reason: "topic/title/chapter 없음" };
 
-  // generator는 비강제: 네이밍 개선 이후 노트 등 스키마 변형 수용.
+  const roadmapName = stringValue(fm.roadmap);
+  const explicitRoadmapId = stringValue(fm.roadmap_id);
+  const repositoryId = stringValue(fm.repo);
+  const roadmapId =
+    explicitRoadmapId ??
+    (repositoryId && roadmapName
+      ? `${repositoryId}/${roadmapName}`
+      : null);
+
+  // generator는 비강제: topic/title 또는 repo/roadmap/chapter 스키마를 모두 수용.
   // 단, spiral 노트의 최소 신호(chapter_id 또는 depth)는 있어야 한다.
   const hasChapter = fm.chapter_id != null;
   const depthFromName = file.match(/[\s-]d(\d+)\.md$/)?.[1];
@@ -220,15 +229,21 @@ function parseOldNote(
       topic,
       date,
       depth: Number(fm.depth ?? depthFromName ?? 1),
-      // chapter_id 없는 변형 스키마: 파일명을 chapter로, 그룹핑은 topic 기반으로
+      // chapter_id 없는 변형 스키마: topic/title/chapter 기반으로 그룹핑
       chapterId: hasChapter ? String(fm.chapter_id) : `topic:${topic}`,
-      roadmapName: fm.roadmap ?? null,
-      roadmapId: fm.roadmap_id ?? null,
+      roadmapName,
+      roadmapId,
       tags: Array.isArray(fm.tags) ? fm.tags.map(String) : [],
       related,
       sections,
     },
   };
+}
+
+function stringValue(value: unknown): string | null {
+  if (value == null) return null;
+  const normalized = String(value).trim();
+  return normalized || null;
 }
 
 function extractQuestions(n: OldNote): string[] {

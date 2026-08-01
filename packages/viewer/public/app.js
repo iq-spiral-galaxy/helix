@@ -1,6 +1,6 @@
 import {
   filterOpenQuestions,
-  filterSidebarSubjects,
+  filterSidebarItems,
   parseBookmarkIds,
   selectHomeFocus,
   selectBookmarkItems,
@@ -29,6 +29,7 @@ let strandFrame = 0;
 let bookmarkIds = [];
 let knownSubjectIds = null;
 let sidebarSubjects = [];
+let sidebarHierarchy = { repositories: [] };
 let sidebarSearchReady = false;
 let sidebarSearchFailed = false;
 let mobileSidebarOpener = null;
@@ -310,9 +311,13 @@ function setBookmarked(id, title) {
 
 async function initSidebar() {
   try {
-    const subjects = await getJSON("/api/subjects");
+    const [subjects, hierarchy] = await Promise.all([
+      getJSON("/api/subjects"),
+      getJSON("/api/roadmaps"),
+    ]);
     syncBookmarkCount(subjects);
     sidebarSubjects = subjects;
+    sidebarHierarchy = hierarchy;
     sidebarSearchReady = true;
     sidebarSearchFailed = false;
     subjectTitles = Object.fromEntries(subjects.map((s) => [s.id, displayTitle(s.title)]));
@@ -734,7 +739,7 @@ function paintSidebarResults() {
     return;
   }
 
-  searchHits = filterSidebarSubjects(sidebarSubjects, q);
+  searchHits = filterSidebarItems(sidebarSubjects, sidebarHierarchy, q);
 
   if (!searchHits.length) {
     searchSel = -1;
@@ -751,10 +756,13 @@ function paintSidebarResults() {
     .map(
       (hit, index) => `
         <a class="side-item side-search-result${index === searchSel ? " sel" : ""}"
-          id="side-search-option-${index}" data-sid="${esc(hit.id)}"
+          id="side-search-option-${index}" data-sid="${esc(hit.subjectId ?? "")}"
           href="${hit.route}" role="option" tabindex="-1"
           aria-selected="${index === searchSel}">
-          <span class="si-title">${mark(hit.title, q)}</span>
+          <span class="side-search-copy">
+            <span class="si-title">${mark(hit.title, q)}</span>
+            <span class="si-context">${esc(hit.context)}</span>
+          </span>
         </a>`,
     )
     .join("");

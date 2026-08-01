@@ -2976,11 +2976,28 @@ details.sections summary:hover { background: var(--raised-soft); }
 .side-search-status:empty { display: none; }
 .side-list[hidden] { display: none !important; }
 .side-search-result {
+  align-items: flex-start;
   min-height: 42px;
   margin: 1px 0;
   padding-inline: 10px;
 }
 .side-search-result.sel { background: var(--raised); }
+.side-search-copy {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+.side-search-copy .si-title { flex: none; width: 100%; }
+.si-context {
+  width: 100%;
+  overflow: hidden;
+  color: var(--text-faint);
+  font-size: 0.68rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 .side-search-result mark {
   border-radius: 2px;
   background: transparent;

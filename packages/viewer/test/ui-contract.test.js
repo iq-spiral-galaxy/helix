@@ -217,14 +217,19 @@ describe("Helix viewer UI contract", () => {
     expect(html).toMatch(
       /id="side-list"[^>]*role="listbox"[^>]*hidden/,
     );
-    expect(app).toContain('const subjects = await getJSON("/api/subjects")');
-    expect(app).not.toContain('getJSON("/api/roadmaps")');
+    expect(app).toContain('getJSON("/api/subjects")');
+    expect(app).toContain('getJSON("/api/roadmaps")');
+    expect(app).toContain("const [subjects, hierarchy] = await Promise.all");
     expect(app).not.toContain("helix.roadmap.collapsed");
-    expect(app).toContain("filterSidebarSubjects(sidebarSubjects, q)");
+    expect(app).toContain(
+      "filterSidebarItems(sidebarSubjects, sidebarHierarchy, q)",
+    );
     expect(app).toMatch(
       /if \(!q\) \{[\s\S]*?sideSearchResults\.replaceChildren\(\);[\s\S]*?sideSearchResults\.hidden = true;[\s\S]*?aria-expanded",/,
     );
     expect(app).toContain('class="side-item side-search-result');
+    expect(app).toContain('class="side-search-copy"');
+    expect(app).toContain('class="si-context"');
     expect(app).toContain('role="option" tabindex="-1"');
     expect(app).toContain("event.isComposing");
     expect(app).toContain("if (searchSel < 0) searchSel = 0;");
@@ -238,6 +243,8 @@ describe("Helix viewer UI contract", () => {
     );
     expect(app).toContain('item.setAttribute("aria-current", "page")');
     expect(css).toContain(".side-list[hidden] { display: none !important; }");
+    expect(css).toContain(".side-search-copy");
+    expect(css).toContain(".si-context");
     expect(css).toContain(".side-settings { margin-top: auto; }");
   });
 

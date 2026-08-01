@@ -66,4 +66,78 @@ tags: ["mysql"]
     const rf = (await store.getSubject("row-format"))!;
     expect(rf.layers[0].depth).toBe(1); // 파일명 d1에서 추출
   });
+
+  it("repo/roadmap/chapter 스키마를 레포와 챕터가 보존된 subject로 가져온다", async () => {
+    const vault = await mkdtemp(join(tmpdir(), "vault-"));
+    const notes = join(vault, "spiral-buddy");
+    await mkdir(notes, { recursive: true });
+
+    const chapter = "B-Tree 인덱스 — 왜 Binary Tree가 아닌 B-Tree인가";
+    await writeFile(
+      join(notes, `${chapter} d1.md`),
+      `---
+repo: "database-internals"
+roadmap: "index-internals"
+chapter: "${chapter}"
+depth: 1
+date: 2026-06-17
+tags: ["btree", "innodb"]
+summary: "B+Tree의 기본 구조"
+---
+
+# ${chapter}
+
+## 한 줄 요약
+B+Tree는 디스크 Page 단위 I/O에 맞춰 fan-out을 높인다.
+
+## 헷갈렸던 / 확인이 필요한 지점
+- B-Tree와 B+Tree의 리프 구조 차이는 무엇인가?
+`,
+    );
+    await writeFile(
+      join(notes, `${chapter} d2.md`),
+      `---
+repo: "database-internals"
+roadmap: "index-internals"
+chapter: "${chapter}"
+depth: 2
+date: 2026-06-18
+tags: ["btree", "page-split"]
+summary: "Page Split 심화"
+---
+
+# ${chapter}
+
+## 한 줄 요약
+키 선택에 따라 Page Split 빈도가 달라진다.
+`,
+    );
+
+    const store = new FileHelixStore(await mkdtemp(join(tmpdir(), "helix-")));
+    const result = await importSpiralBuddy(store, vault);
+
+    expect(result).toMatchObject({
+      subjects: 1,
+      layers: 2,
+      seededQuestions: 1,
+      skipped: [],
+    });
+
+    const subject = (await store.getSubject(
+      "b-tree-인덱스-왜-binary-tree가-아닌-b-tree인가",
+    ))!;
+    expect(subject.title).toBe(chapter);
+    expect(subject.sources).toEqual([
+      {
+        kind: "spiral-buddy",
+        roadmapId: "database-internals/index-internals",
+        chapterId: `topic:${chapter}`,
+      },
+    ]);
+    expect(subject.layers.map(({ depth, date }) => ({ depth, date }))).toEqual([
+      { depth: 1, date: "2026-06-17" },
+      { depth: 2, date: "2026-06-18" },
+    ]);
+    expect(subject.tags).toEqual(["btree", "innodb", "page-split"]);
+  });
 });

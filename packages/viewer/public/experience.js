@@ -63,42 +63,135 @@ export function selectBookmarkItems(ids = [], subjects = []) {
   });
 }
 
+const SEARCH_TOKEN_ALIASES = new Map([
+  ["db", "database"],
+]);
+
 /**
- * 사이드바는 전체 트리를 미리 펼치지 않고, 입력한 동안에만 Subject를 평면 검색한다.
+ * 대소문자와 구분자 차이를 없애고 익숙한 축약어를 저장 ID와 맞춘다.
+ * 예: "DB_internals"와 "database-internals" → "database internals".
  */
-export function filterSidebarSubjects(subjects = [], query = "", limit = 30) {
-  const needle = text(query).trim().toLocaleLowerCase();
+export function normalizeSidebarQuery(value) {
+  return text(value)
+    .normalize("NFKC")
+    .toLocaleLowerCase()
+    .replace(/[^\p{L}\p{N}]+/gu, " ")
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean)
+    .map((token) => SEARCH_TOKEN_ALIASES.get(token) ?? token)
+    .join(" ");
+}
+
+function searchScore(fields, query) {
+  const normalized = fields.map(normalizeSidebarQuery).filter(Boolean);
+  const tokens = query.split(" ").filter(Boolean);
+  const haystack = normalized.join(" ");
+  if (!tokens.every((token) => haystack.includes(token))) return null;
+  const direct = normalized.flatMap((field, index) => {
+    const fieldWeight = index * 4;
+    if (field === query) return [fieldWeight];
+    if (field.startsWith(query)) return [fieldWeight + 1];
+    if (field.includes(query)) return [fieldWeight + 2];
+    return [];
+  });
+  return direct.length ? Math.min(...direct) : normalized.length * 4 + 3;
+}
+
+/**
+ * 기본 목록은 열지 않고, 입력한 동안에만 레포·챕터·Subject를 한 목록에서 찾는다.
+ * `/api/roadmaps`의 subjectIds로 요약 Subject에 계층 문맥을 다시 연결한다.
+ */
+export function filterSidebarItems(
+  subjects = [],
+  hierarchy = {},
+  query = "",
+  limit = 30,
+) {
+  const needle = normalizeSidebarQuery(query);
   if (!needle) return [];
-  return subjects
-    .map((subject) => {
-      const title = text(subject.title).replace(/^\d+[.)]\s*/, "");
-      const titleIndex = title.toLocaleLowerCase().indexOf(needle);
-      const tags = (subject.tags ?? []).map(text).join(" ").toLocaleLowerCase();
-      const idIndex = text(subject.id).toLocaleLowerCase().indexOf(needle);
-      if (titleIndex === -1 && !tags.includes(needle) && idIndex === -1) return null;
-      return {
-        id: subject.id,
-        title,
-        route: `#/s/${encodeURIComponent(subject.id)}`,
-        score:
-          titleIndex === 0
-            ? 0
-            : titleIndex > 0
-              ? 1
-              : tags.includes(needle)
-                ? 2
-                : 3,
-        lastTouched: subject.lastTouched ?? "",
+
+  const subjectContext = new Map();
+  const entries = [];
+  for (const repository of hierarchy.repositories ?? []) {
+    entries.push({
+      kind: "repository",
+      id: repository.id,
+      title: repository.title,
+      context: `레포 · 나선 ${repository.subjectCount ?? 0}개`,
+      route: `#/map/${encodeURIComponent(repository.id)}`,
+      fields: [repository.title, repository.id],
+      lastTouched: "",
+    });
+    for (const chapter of repository.chapters ?? []) {
+      const context = {
+        repositoryId: repository.id,
+        repositoryTitle: repository.title,
+        chapterId: chapter.id,
+        chapterTitle: chapter.title,
       };
+      for (const subjectId of chapter.subjectIds ?? []) {
+        subjectContext.set(subjectId, context);
+      }
+      entries.push({
+        kind: "chapter",
+        id: chapter.id,
+        title: chapter.title,
+        context: `챕터 · ${repository.title} · 나선 ${(chapter.subjectIds ?? []).length}개`,
+        route: `#/map/${encodeURIComponent(repository.id)}?chapter=${encodeURIComponent(chapter.id)}`,
+        fields: [
+          chapter.title,
+          chapter.id,
+          repository.title,
+          repository.id,
+        ],
+        lastTouched: "",
+      });
+    }
+  }
+
+  for (const subject of subjects) {
+    const context = subjectContext.get(subject.id);
+    const title = text(subject.title).replace(/^\d+[.)]\s*/, "");
+    entries.push({
+      kind: "subject",
+      id: subject.id,
+      subjectId: subject.id,
+      title,
+      context: context
+        ? `나선 · ${context.repositoryTitle} / ${context.chapterTitle}`
+        : "나선",
+      route: `#/s/${encodeURIComponent(subject.id)}`,
+      fields: [
+        title,
+        subject.id,
+        ...(subject.tags ?? []),
+        context?.repositoryTitle,
+        context?.repositoryId,
+        context?.chapterTitle,
+        context?.chapterId,
+      ],
+      lastTouched: subject.lastTouched ?? "",
+    });
+  }
+
+  const kindRank = { repository: 0, chapter: 1, subject: 2 };
+  return entries
+    .map((entry) => {
+      const score = searchScore(entry.fields, needle);
+      return score == null ? null : { ...entry, score };
     })
     .filter(Boolean)
     .sort(
       (a, b) =>
         a.score - b.score ||
+        kindRank[a.kind] - kindRank[b.kind] ||
         compareDateDesc(a.lastTouched, b.lastTouched) ||
-        compareText(a.title, b.title),
+        compareText(a.title, b.title) ||
+        compareText(a.id, b.id),
     )
-    .slice(0, Math.max(0, limit));
+    .slice(0, Math.max(0, limit))
+    .map(({ fields: _fields, score, ...entry }) => ({ ...entry, score }));
 }
 
 /**
