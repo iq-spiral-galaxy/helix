@@ -140,6 +140,39 @@ describe("Helix viewer UI contract", () => {
     );
   });
 
+  it("연결 유형을 독립 그룹으로 나누고 지도 이동을 패널 안의 명확한 액션으로 둔다", () => {
+    expect(app).toContain('class="conn-group conn-group-${kind}"');
+    expect(app).toContain('class="conn-group-head"');
+    expect(app).toContain('class="conn-h-meta"');
+    expect(app).toContain('aria-labelledby="${headingId}"');
+    expect(app).toContain('class="conn-actions"');
+    expect(app).toContain('aria-label="현재 나선의 연결을 지도에서 보기"');
+    expect(app).toContain('focusable="false"');
+    expect(app).toMatch(/conn-actions[\s\S]*?conn-maplink[\s\S]*?conn-groups/);
+    expect(app).not.toContain("같은 로드맵 ·");
+    expect(app).not.toContain("관련 나선 — 태그 공유");
+    expect(app).not.toContain("지도에서 보기 →");
+    expect(app).not.toContain('class="conn-head"');
+    expect(lastRule(css, ".conn-body")).toContain(
+      "padding: 4px var(--conn-inline-end) 18px var(--conn-body-start)",
+    );
+    expect(ruleBodies(css, ".conn-group").join("\n")).toContain(
+      "border: 1px solid var(--border)",
+    );
+    expect(ruleBodies(css, ".conn-maplink").join("\n")).toContain(
+      "min-height: 44px",
+    );
+    expect(ruleBodies(css, ".ci-title").join("\n")).toContain(
+      "white-space: normal",
+    );
+    expect(ruleBodies(css, ".ci-tags").join("\n")).toContain(
+      "flex-wrap: wrap",
+    );
+    expect(css).toMatch(
+      /@media \(max-width: 520px\)[\s\S]*?--conn-body-start:\s*18px/,
+    );
+  });
+
   it("Layer 표시와 이동 제어를 군더더기 없이 같은 축에 정렬한다", () => {
     expect(app).not.toContain('${isLatest ? " · 최신" : ""}');
     expect(app).not.toContain('aria-label="최신 Layer');

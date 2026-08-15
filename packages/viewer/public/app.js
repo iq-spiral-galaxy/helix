@@ -1291,7 +1291,7 @@ async function renderConnections(id, repo = "misc") {
 
   const chip = (t) => `<span class="tagchip">${esc(t)}</span>`;
   const row = (x, withTags) => `
-    <a class="conn-item" href="#/s/${encodeURIComponent(x.id)}">
+    <a class="conn-item${withTags ? " conn-item-related" : ""}" href="#/s/${encodeURIComponent(x.id)}">
       <span class="ci-title">${esc(displayTitle(x.title))}</span>
       ${
         withTags && x.sharedTags?.length
@@ -1303,40 +1303,63 @@ async function renderConnections(id, repo = "misc") {
       ${x.openQuestionCount ? `<span class="si-oq">${metaMark("question", x.openQuestionCount)}</span>` : ""}
     </a>`;
 
+  const group = (kind, title, context, content) => {
+    const headingId = `conn-${kind}-heading`;
+    return `<section class="conn-group conn-group-${kind}" aria-labelledby="${headingId}">
+      <header class="conn-group-head">
+        <h3 id="${headingId}" class="conn-h">${esc(title)}</h3>
+        ${context ? `<span class="conn-h-meta">${esc(context)}</span>` : ""}
+      </header>
+      <div class="conn-list">${content}</div>
+    </section>`;
+  };
+
   const sections = [];
-  if (c.roadmap) {
+  if (c.roadmap?.siblings?.length) {
     sections.push(
-      `<h3 class="conn-h">같은 로드맵 · ${esc(c.roadmap.title)}</h3>` +
+      group(
+        "roadmap",
+        "같은 로드맵",
+        c.roadmap.title,
         c.roadmap.siblings.map((x) => row(x, false)).join(""),
+      ),
     );
   }
   if (c.related.length) {
     const head = c.related.slice(0, 6);
     const more = c.related.slice(6);
     sections.push(
-      `<h3 class="conn-h">관련 나선 — 태그 공유</h3>` +
+      group(
+        "related",
+        "관련 나선",
+        "공유 태그 기준",
         head.map((x) => row(x, true)).join("") +
-        (more.length
-          ? `<details class="conn-more"><summary>관련 나선 ${more.length}개 더</summary>${more
-              .map((x) => row(x, true))
-              .join("")}</details>`
-          : ""),
+          (more.length
+            ? `<details class="conn-more"><summary>관련 나선 ${more.length}개 더</summary>${more
+                .map((x) => row(x, true))
+                .join("")}</details>`
+            : ""),
+      ),
     );
   }
   const links = [...(c.explicit ?? []), ...(c.backlinks ?? [])];
   if (links.length) {
     sections.push(
-      `<h3 class="conn-h">명시적 연결</h3>` +
+      group(
+        "explicit",
+        "명시적 연결",
+        "직접 연결된 나선",
         links
           .map(
             (x) => `
-        <a class="conn-item" href="#/s/${encodeURIComponent(x.id)}">
-          <span class="ci-dir">${x.direction === "out" ? "→" : "←"}</span>
-          <span class="ci-title">${esc(displayTitle(x.title))}</span>
-          <span class="ci-type">${esc(x.type)}</span>
-        </a>`,
+          <a class="conn-item conn-item-explicit" href="#/s/${encodeURIComponent(x.id)}">
+            <span class="ci-dir">${x.direction === "out" ? "→" : "←"}</span>
+            <span class="ci-title">${esc(displayTitle(x.title))}</span>
+            <span class="ci-type">${esc(x.type)}</span>
+          </a>`,
           )
           .join(""),
+      ),
     );
   }
   app.querySelector(".conn-panel")?.remove(); // 비순차 fetch로 인한 중복 패널 방지
@@ -1346,9 +1369,12 @@ async function renderConnections(id, repo = "misc") {
   panel.className = "conn-panel";
   panel.innerHTML =
     `<summary>연결</summary>` +
-    `<div class="conn-body"><div class="conn-head">` +
-    `<a class="conn-maplink" href="#/map/${encodeURIComponent(repo)}?focus=${encodeURIComponent(id)}">지도에서 보기 →</a></div>` +
-    sections.join("") +
+    `<div class="conn-body"><div class="conn-actions">` +
+    `<a class="conn-maplink" href="#/map/${encodeURIComponent(repo)}?focus=${encodeURIComponent(id)}" aria-label="현재 나선의 연결을 지도에서 보기">` +
+    `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">` +
+    `<path d="m4 6 5-2.5 6 2.5 5-2.5v14L15 20l-6-2.5L4 20Z"/><path d="M9 3.5v14M15 6v14"/>` +
+    `</svg><span>지도에서 보기</span></a></div>` +
+    `<div class="conn-groups">${sections.join("")}</div>` +
     `</div>`;
   app.appendChild(panel);
 }
