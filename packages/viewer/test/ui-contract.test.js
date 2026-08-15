@@ -85,6 +85,21 @@ describe("Helix viewer UI contract", () => {
     expect(css).toContain(".section .md .md-table-wrap");
   });
 
+  it("나와 버디를 색상에만 의존하지 않는 대화 turn으로 구분한다", () => {
+    expect(markdown).toContain('role="list" aria-label="나와 버디의 대화"');
+    expect(markdown).toContain('role="listitem"');
+    expect(markdown).toContain('class="md-dialogue-symbol"');
+    expect(markdown).toContain('focusable="false"');
+    expect(css).toContain(".md-dialogue-turn-me");
+    expect(css).toContain(".md-dialogue-turn-buddy");
+    expect(css).toMatch(
+      /@media \(max-width: 520px\)[\s\S]*\.md-dialogue-turn[\s\S]*grid-template-columns/,
+    );
+    expect(css).toMatch(
+      /@media \(forced-colors: active\)[\s\S]*--speaker-buddy-border: Highlight/,
+    );
+  });
+
   it("과장된 콘셉트 라벨과 지도 메타데이터를 기본 화면에서 제거한다", () => {
     for (const label of [
       "HELIX OBSERVATORY",

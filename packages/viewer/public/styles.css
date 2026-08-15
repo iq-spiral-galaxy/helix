@@ -40,6 +40,12 @@
   --code-annotation: #654f8e;
   --code-type: #276b6d;
   --code-function: #34443c;
+  --speaker-me-surface: rgba(31, 32, 31, 0.035);
+  --speaker-me-border: rgba(31, 32, 31, 0.24);
+  --speaker-me-mark: #5f625f;
+  --speaker-buddy-surface: rgba(31, 113, 71, 0.055);
+  --speaker-buddy-border: rgba(31, 113, 71, 0.32);
+  --speaker-buddy-mark: #1f7147;
 
   --sans: "Pretendard Variable", Pretendard, -apple-system, BlinkMacSystemFont,
     "Apple SD Gothic Neo", system-ui, sans-serif;
@@ -88,6 +94,12 @@
   --code-annotation: #b6a2df;
   --code-type: #9bcfd0;
   --code-function: #d0d8d3;
+  --speaker-me-surface: rgba(238, 238, 237, 0.035);
+  --speaker-me-border: rgba(238, 238, 237, 0.23);
+  --speaker-me-mark: #aeb1af;
+  --speaker-buddy-surface: rgba(120, 198, 154, 0.065);
+  --speaker-buddy-border: rgba(120, 198, 154, 0.34);
+  --speaker-buddy-mark: #78c995;
 }
 
 * { box-sizing: border-box; }
@@ -627,6 +639,57 @@ details.sections:not([open]) .sum-open { display: none; }
   border-left-color: var(--link-border);
   margin-left: 0.15rem;
 }
+.section .md .md-dialogue {
+  margin: 0.7rem 0;
+}
+.section .md .md-dialogue-turn {
+  display: grid;
+  grid-template-columns: 3.4rem minmax(0, 1fr);
+  gap: 0.9rem;
+  margin: 0;
+  padding: 1.05rem 0.85rem 1.15rem;
+}
+.section .md .md-dialogue-turn-me {
+  margin-inline-start: 1.35rem;
+  border-inline-end: 2px solid var(--speaker-me-border);
+  background: var(--speaker-me-surface);
+}
+.section .md .md-dialogue-turn-buddy {
+  margin-inline-end: 1.35rem;
+  border-inline-start: 2px solid var(--speaker-buddy-border);
+  background: var(--speaker-buddy-surface);
+}
+.section .md .md-dialogue-speaker {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.3rem;
+  padding-top: 0.05rem;
+}
+.section .md .md-dialogue-symbol {
+  display: block;
+  width: 1.18rem;
+  height: 1.18rem;
+  color: var(--speaker-me-mark);
+}
+.section .md .md-dialogue-turn-buddy .md-dialogue-symbol {
+  color: var(--speaker-buddy-mark);
+}
+.section .md .md-dialogue-symbol-secondary { opacity: 0.45; }
+.section .md .md-dialogue-name {
+  color: var(--speaker-me-mark);
+  font-size: 0.69rem;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+.section .md .md-dialogue-turn-buddy .md-dialogue-name {
+  color: var(--speaker-buddy-mark);
+}
+.section .md .md-dialogue-content {
+  min-width: 0;
+}
+.section .md .md-dialogue-content > :first-child { margin-top: 0; }
+.section .md .md-dialogue-content > :last-child { margin-bottom: 0; }
 .section .md .md-callout {
   border: 1px solid var(--border-faint);
   border-left: 3px solid var(--link-border);
@@ -3222,6 +3285,16 @@ main[data-page="bookmarks"] { max-width: 860px; }
 }
 
 @media (max-width: 520px) {
+  .section .md .md-dialogue-turn,
+  .section .md .md-dialogue-turn-me,
+  .section .md .md-dialogue-turn-buddy {
+    margin-inline: 0;
+  }
+  .section .md .md-dialogue-turn {
+    grid-template-columns: 2.8rem minmax(0, 1fr);
+    gap: 0.65rem;
+    padding-inline: 0.65rem;
+  }
   .bookmark-toggle {
     width: 36px;
     justify-content: center;
@@ -3250,6 +3323,12 @@ main[data-page="bookmarks"] { max-width: 860px; }
     --text-ghost: GrayText;
     --accent: Highlight;
     --link: LinkText;
+    --speaker-me-surface: Canvas;
+    --speaker-me-border: GrayText;
+    --speaker-me-mark: CanvasText;
+    --speaker-buddy-surface: Canvas;
+    --speaker-buddy-border: Highlight;
+    --speaker-buddy-mark: Highlight;
   }
   .tabbar,
   .tab-wrap.active,
@@ -3269,4 +3348,7 @@ main[data-page="bookmarks"] { max-width: 860px; }
     border-inline-start: 2px solid Highlight;
   }
   .map-wrap { background: Canvas; }
+  .section .md .md-dialogue-turn { background: Canvas; }
+  .section .md .md-dialogue-turn-me { border-inline-end-color: GrayText; }
+  .section .md .md-dialogue-turn-buddy { border-inline-start-color: Highlight; }
 }

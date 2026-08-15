@@ -440,6 +440,101 @@ function renderQuote(lines, depth) {
   return `<blockquote>${renderBlocks(lines, depth + 1)}</blockquote>`;
 }
 
+/**
+ * Imported study transcripts use a bold, emoji-prefixed line for each
+ * speaker.  Recognise only the complete, standalone marker so ordinary bold
+ * prose mentioning "나" or "버디" is left untouched.  The emoji is source
+ * metadata rather than presentation: the UI emits its own restrained labels.
+ */
+function dialogueSpeakerAt(line) {
+  const marker = line.match(/^ {0,3}\*\*\s*(.*?)\s*\*\*\s*:?[ \t]*$/u);
+  if (!marker) return null;
+  if (!/\p{Extended_Pictographic}/u.test(marker[1])) return null;
+  const name = marker[1]
+    .replace(/[\p{Extended_Pictographic}\p{Emoji_Modifier}\uFE0F\u200D]/gu, "")
+    .trim();
+  if (name === "나") {
+    return {
+      key: "me",
+      name: "나",
+    };
+  }
+  if (name === "버디") {
+    return {
+      key: "buddy",
+      name: "버디",
+    };
+  }
+  return null;
+}
+
+function nextDialogueSpeaker(lines, start) {
+  let activeFence = null;
+  for (let index = start; index < lines.length; index += 1) {
+    if (activeFence) {
+      if (closesFence(lines[index], activeFence)) activeFence = null;
+      continue;
+    }
+    const fence = fenceAt(lines[index]);
+    if (fence) {
+      activeFence = fence;
+      continue;
+    }
+    if (dialogueSpeakerAt(lines[index])) return index;
+  }
+  return lines.length;
+}
+
+function renderDialogueSpeakerIcon(key) {
+  if (key === "buddy") {
+    return (
+      `<svg class="md-dialogue-symbol" viewBox="0 0 24 24" fill="none" ` +
+      `stroke="currentColor" stroke-width="1.7" stroke-linecap="round" ` +
+      `stroke-linejoin="round" aria-hidden="true" focusable="false">` +
+      `<path d="M7.2 3c0 3.8 9.6 3.8 9.6 7.7s-9.6 3.8-9.6 7.7c0 1.2 1 2 2.4 2.6"/>` +
+      `<path class="md-dialogue-symbol-secondary" d="M16.8 3c0 3.8-9.6 3.8-9.6 7.7s9.6 3.8 9.6 7.7c0 1.2-1 2-2.4 2.6"/>` +
+      `</svg>`
+    );
+  }
+  return (
+    `<svg class="md-dialogue-symbol" viewBox="0 0 24 24" fill="none" ` +
+    `stroke="currentColor" stroke-width="1.7" stroke-linecap="round" ` +
+    `stroke-linejoin="round" aria-hidden="true" focusable="false">` +
+    `<circle cx="12" cy="8" r="3.25"/>` +
+    `<path d="M5.75 20c.45-3.75 2.55-5.75 6.25-5.75S17.8 16.25 18.25 20"/>` +
+    `</svg>`
+  );
+}
+
+function renderDialogueTurn(lines, speaker, depth) {
+  const body = renderBlocks(lines, depth + 1);
+  return (
+    `<section class="md-dialogue-turn md-dialogue-turn-${speaker.key}" role="listitem">` +
+    `<header class="md-dialogue-speaker">` +
+    renderDialogueSpeakerIcon(speaker.key) +
+    `<span class="md-dialogue-name">${speaker.name}</span>` +
+    `</header>` +
+    `<div class="md-dialogue-content">${body}</div>` +
+    `</section>`
+  );
+}
+
+function renderDialogue(lines, start, depth) {
+  const turns = [];
+  let index = start;
+  while (index < lines.length) {
+    const speaker = dialogueSpeakerAt(lines[index]);
+    if (!speaker) break;
+    const next = nextDialogueSpeaker(lines, index + 1);
+    turns.push(renderDialogueTurn(lines.slice(index + 1, next), speaker, depth));
+    index = next;
+  }
+  return {
+    html: `<div class="md-dialogue" role="list" aria-label="나와 버디의 대화">${turns.join("")}</div>`,
+    next: index,
+  };
+}
+
 function legacySummaryAt(line) {
   return line.match(/^\s*<summary>(.*)<\/summary>\s*$/)?.[1] ?? null;
 }
@@ -497,6 +592,15 @@ function renderBlocks(lines, depth = 0) {
     if (!line.trim()) {
       flushParagraph();
       index += 1;
+      continue;
+    }
+
+    const dialogueSpeaker = dialogueSpeakerAt(line);
+    if (dialogueSpeaker) {
+      flushParagraph();
+      const dialogue = renderDialogue(lines, index, depth);
+      out.push(dialogue.html);
+      index = dialogue.next;
       continue;
     }
 

@@ -27,7 +27,11 @@ describe("Helix Markdown renderer", () => {
 
     expect(html).toContain('<details class="md-callout md-callout-quote">');
     expect(html).toContain("펼쳐서 대화 전체 다시 보기 (27개 메시지)");
-    expect(html).toContain("<strong>🤖 버디</strong>");
+    expect(html).toContain('class="md-dialogue-turn md-dialogue-turn-buddy"');
+    expect(html).toContain('<div class="md-dialogue" role="list" aria-label="나와 버디의 대화">');
+    expect(html).toContain('<svg class="md-dialogue-symbol"');
+    expect(html).toContain('<span class="md-dialogue-name">버디</span>');
+    expect(html).not.toContain("🤖");
     expect(html).toContain("<h2>인덱스 설계 전략 — 첫 번째 레이어</h2>");
     expect(html).toContain("<blockquote>");
     expect(html).toContain("쇼핑몰 <code>orders</code>");
@@ -176,5 +180,60 @@ Change Buffer: Secondary Index 쓰기 최적화
     expect(renderMarkdownInline("**굵게** *기울임* \`**코드**\` index_name")).toBe(
       "<strong>굵게</strong> <em>기울임</em> <code>**코드**</code> index_name",
     );
+  });
+
+  it("화자 사이의 문단·목록·코드·표를 각각 하나의 대화 turn으로 묶는다", () => {
+    const html = renderMarkdown(`
+**🤖 버디**
+첫 문단입니다.
+
+- 첫 항목
+- 둘째 항목
+
+\`\`\`sql
+SELECT * FROM orders;
+\`\`\`
+
+| 이름 | 값 |
+| --- | ---: |
+| rows | 3 |
+
+**🙋 나**
+내 답변입니다.
+
+> 추가 인용
+`);
+
+    expect(html.match(/class="md-dialogue-turn /g)).toHaveLength(2);
+    expect(html.match(/role="listitem"/g)).toHaveLength(2);
+    expect(html).toContain('role="list" aria-label="나와 버디의 대화"');
+    expect(html).toContain('class="md-dialogue-turn md-dialogue-turn-buddy"');
+    expect(html).toContain("<ul><li>첫 항목</li><li>둘째 항목</li></ul>");
+    expect(html).toContain('<pre class="codeblock" data-language="sql"><code>');
+    expect(html).toContain('<div class="md-table-wrap" role="region" aria-label="표">');
+    expect(html).toContain('class="md-dialogue-turn md-dialogue-turn-me"');
+    expect(html).not.toContain('aria-label="버디의 대화"');
+    expect(html).not.toContain('aria-label="나의 대화"');
+    expect(html.match(/class="md-dialogue-symbol"/g)).toHaveLength(2);
+    expect(html).toContain("<blockquote><p>추가 인용</p></blockquote>");
+    expect(html).not.toMatch(/[🤖🙋]/u);
+  });
+
+  it("코드 안의 화자 표식과 일반 강조 문구는 대화 turn으로 오인하지 않는다", () => {
+    const html = renderMarkdown(`
+\`\`\`md
+**🤖 버디**
+\`\`\`
+
+**버디 전략**은 일반 문장입니다.
+
+**나**
+emoji 없는 일반 강조 표식입니다.
+`);
+
+    expect(html.match(/class="md-dialogue-turn /g) ?? []).toHaveLength(0);
+    expect(html.replace(/<[^>]+>/g, "")).toContain("**🤖 버디**");
+    expect(html).toContain("<strong>버디 전략</strong>");
+    expect(html).toContain("<strong>나</strong> emoji 없는 일반 강조 표식입니다.");
   });
 });
