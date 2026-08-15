@@ -2,6 +2,7 @@ import {
   filterOpenQuestions,
   filterSidebarItems,
   parseBookmarkIds,
+  sectionHeadingPresentation,
   selectHomeFocus,
   selectBookmarkItems,
   sortOpenQuestions,
@@ -1105,6 +1106,38 @@ function subjectRow(s) {
     </a>`;
 }
 
+function sectionHeadingIcon(kind) {
+  if (kind === "lookup") {
+    return `<span class="section-heading-icon" aria-hidden="true">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"
+        stroke-linecap="round" stroke-linejoin="round" focusable="false">
+        <circle cx="10.5" cy="10.5" r="5.5"/>
+        <path d="m14.6 14.6 4.1 4.1"/>
+      </svg>
+    </span>`;
+  }
+  if (kind === "dialogue") {
+    return `<span class="section-heading-icon" aria-hidden="true">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"
+        stroke-linecap="round" stroke-linejoin="round" focusable="false">
+        <path d="M6.5 5.5h9a3 3 0 0 1 3 3v3a3 3 0 0 1-3 3H11l-4.5 3v-3.4a3 3 0 0 1-2-2.8V8.5a3 3 0 0 1 2-3Z"/>
+        <path d="M8.5 9.2h6M8.5 11.8h4"/>
+      </svg>
+    </span>`;
+  }
+  return "";
+}
+
+function renderSectionHeading(heading) {
+  const { kind, label } = sectionHeadingPresentation(heading);
+  if (!label) return "";
+  if (!kind) return `<h3>${esc(label)}</h3>`;
+  return `<h3 class="section-heading section-heading-${kind}">
+    ${sectionHeadingIcon(kind)}
+    <span>${esc(label)}</span>
+  </h3>`;
+}
+
 /* ---------- subject 상세 ---------- */
 
 async function renderTimeline(id, token) {
@@ -1122,6 +1155,9 @@ async function renderTimeline(id, token) {
   // layer 1개면 전부 동일한 평행선 = 번잡 — 배지·칩이 이미 같은 정보를 전달하므로 생략.
   const showStrands = s.layers.length >= 2;
   const latest = s.layers.at(-1);
+  const target = new URLSearchParams(location.hash.split("?")[1]).get("layer");
+  const current =
+    s.layers.find((layer) => String(layer.index) === target) ?? latest;
   const rid = s.sources?.find((x) => x.kind === "spiral-buddy")?.roadmapId;
   const repository = repoKeyOf(rid);
   const chapter = rid ? chapterLabelOf(rid) : "분류되지 않은 나선";
@@ -1167,21 +1203,25 @@ async function renderTimeline(id, token) {
           </section>`
         : ""
     }
-    <details class="layer-jump">
-      <summary>Layer 이동</summary>
-      <div>
+    <nav class="layer-jump" aria-label="Layer 이동">
+      <button class="layer-jump-toggle" type="button"
+        aria-expanded="false" aria-controls="layer-jump-links">
+        <span class="layer-jump-chevron" aria-hidden="true"></span>
+        <span>Layer 이동</span>
+      </button>
+      <div class="layer-jump-links" id="layer-jump-links" hidden>
         ${s.layers.map((layer) => `
           <a href="#/s/${encodeURIComponent(id)}?layer=${layer.index}"
-             ${layer.index === latest?.index ? `class="latest" aria-label="최신 Layer ${layer.index}"` : ""}>
+             ${layer.index === current?.index ? `class="current" aria-current="step" aria-label="현재 Layer ${layer.index}"` : ""}>
             ${layer.index}
           </a>`).join("")}
       </div>
-    </details>
+    </nav>
     <h2 class="timeline-title">기록</h2>
     <div class="timeline">
       ${showStrands ? `<div class="strand-gutter"></div>` : ""}
       <div class="layers-col">
-        ${s.layers.map((l) => layerCard(l, qById, l.index === latest?.index)).join("")}
+        ${s.layers.map((l) => layerCard(l, qById, l.index === current?.index)).join("")}
       </div>
     </div>`;
 
@@ -1195,9 +1235,15 @@ async function renderTimeline(id, token) {
     setBookmarked(s.id, displayTitle(s.title));
     paintBookmarkButton(bookmarkButton, s.id);
   });
+  const layerJumpButton = app.querySelector(".layer-jump-toggle");
+  const layerJumpLinks = app.querySelector(".layer-jump-links");
+  layerJumpButton.addEventListener("click", () => {
+    const expanded = layerJumpButton.getAttribute("aria-expanded") === "true";
+    layerJumpButton.setAttribute("aria-expanded", String(!expanded));
+    layerJumpLinks.hidden = expanded;
+  });
 
   if (showStrands) mountStrands(s, lanes, laneCount);
-  const target = new URLSearchParams(location.hash.split("?")[1]).get("layer");
   if (target) focusLayer(target);
   if (!routeIsCurrent(token)) return;
   renderConnections(id, repoKeyOf(rid));
@@ -1295,7 +1341,7 @@ function focusLayer(index) {
   card.scrollIntoView({ behavior: reduce ? "auto" : "smooth", block: "center" });
 }
 
-function layerCard(l, qById, isLatest = false) {
+function layerCard(l, qById, isCurrent = false) {
   const lede =
     l.content.sections.find((sec) => /한 줄 요약/.test(sec.heading))?.body ??
     l.content.sections[0]?.body ??
@@ -1304,9 +1350,9 @@ function layerCard(l, qById, isLatest = false) {
     (sec) => !/한 줄 요약/.test(sec.heading),
   );
   return `
-  <article class="layer-card${isLatest ? " latest-layer" : ""}" data-layer="${l.index}">
+  <article class="layer-card${isCurrent ? " current-layer" : ""}" data-layer="${l.index}">
     <div class="layer-head">
-      <span class="ln">Layer ${l.index}${isLatest ? " · 최신" : ""}</span>
+      <span class="ln">Layer ${l.index}</span>
       <span>${esc(l.date)}</span>
     </div>
     <p class="layer-lede">${mdInline(firstLine(lede))}</p>
@@ -1328,7 +1374,7 @@ function layerCard(l, qById, isLatest = false) {
     </div>
     ${
       rest.length
-        ? `<details class="sections"${isLatest ? " open" : ""}>
+        ? `<details class="sections"${isCurrent ? " open" : ""}>
            <summary>
              <span class="sum-closed">전체 내용 펼치기</span>
              <span class="sum-open">전체 내용 접기</span>
@@ -1336,7 +1382,7 @@ function layerCard(l, qById, isLatest = false) {
            ${rest
              .map(
                (sec) =>
-                 `<div class="section">${sec.heading ? `<h3>${esc(sec.heading)}</h3>` : ""}<div class="md">${mdBlock(sec.body)}</div></div>`,
+                 `<div class="section">${renderSectionHeading(sec.heading)}<div class="md">${mdBlock(sec.body)}</div></div>`,
              )
              .join("")}</details>`
         : ""

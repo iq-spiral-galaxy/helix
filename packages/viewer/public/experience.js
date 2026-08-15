@@ -18,6 +18,30 @@ function questionKey(question) {
   return question?.id ?? question?.questionId ?? "";
 }
 
+const SECTION_HEADING_MARKERS = [
+  { pattern: /^🔍\uFE0F?\s*/u, kind: "lookup" },
+  { pattern: /^💬\uFE0F?\s*/u, kind: "dialogue" },
+];
+
+function canonicalSectionHeadingKind(heading) {
+  if (/^학습 중 찾아본 표현(?:\s*\(\d+\))?$/u.test(heading)) return "lookup";
+  if (heading === "전체 대화") return "dialogue";
+  return null;
+}
+
+/**
+ * 기존 노트의 장식 이모지는 저장 데이터에서 지우지 않고 표시 단계에서만 분리한다.
+ * 요청된 두 제목만 정확히 다뤄 다른 의미 있는 이모지 제목은 그대로 보존한다.
+ */
+export function sectionHeadingPresentation(value) {
+  const heading = text(value).trim();
+  const marker = SECTION_HEADING_MARKERS.find(({ pattern }) =>
+    pattern.test(heading),
+  );
+  const label = marker ? heading.replace(marker.pattern, "").trim() : heading;
+  return { kind: marker?.kind ?? canonicalSectionHeadingKind(label), label };
+}
+
 /**
  * localStorage의 북마크 값을 안전하게 읽고 중복·오염된 ID를 제거한다.
  */

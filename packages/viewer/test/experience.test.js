@@ -4,6 +4,7 @@ import {
   filterSidebarItems,
   normalizeSidebarQuery,
   parseBookmarkIds,
+  sectionHeadingPresentation,
   selectHomeFocus,
   selectBookmarkItems,
   sortOpenQuestions,
@@ -44,6 +45,29 @@ const questions = [
 ];
 
 describe("Helix viewer experience model", () => {
+  it("기존 섹션 이모지를 데이터 변경 없이 표시용 제목과 종류로 분리한다", () => {
+    expect(sectionHeadingPresentation("🔍 학습 중 찾아본 표현 (5)")).toEqual({
+      kind: "lookup",
+      label: "학습 중 찾아본 표현 (5)",
+    });
+    expect(sectionHeadingPresentation("💬 전체 대화")).toEqual({
+      kind: "dialogue",
+      label: "전체 대화",
+    });
+    expect(sectionHeadingPresentation("학습 중 찾아본 표현 (3)")).toEqual({
+      kind: "lookup",
+      label: "학습 중 찾아본 표현 (3)",
+    });
+    expect(sectionHeadingPresentation("전체 대화")).toEqual({
+      kind: "dialogue",
+      label: "전체 대화",
+    });
+    expect(sectionHeadingPresentation("🎯 다음 목표")).toEqual({
+      kind: null,
+      label: "🎯 다음 목표",
+    });
+  });
+
   it("오래 열린 질문을 홈의 다음 관찰로 고른다", () => {
     expect(selectHomeFocus(subjects, questions)).toMatchObject({
       kind: "question",

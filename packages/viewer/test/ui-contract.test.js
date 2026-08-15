@@ -50,6 +50,17 @@ function rgbaChannels(block, name) {
   return match ? match.slice(1).map(Number) : [];
 }
 
+function ruleBodies(source, selector) {
+  const escaped = selector.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return [
+    ...source.matchAll(new RegExp(`${escaped}\\s*\\{([^{}]*)\\}`, "g")),
+  ].map((match) => match[1]);
+}
+
+function lastRule(source, selector) {
+  return ruleBodies(source, selector).at(-1) ?? "";
+}
+
 describe("Helix viewer UI contract", () => {
   it("검색·탭·모바일 탐색의 접근성 표면을 유지한다", () => {
     expect(html).toContain('role="tablist"');
@@ -97,6 +108,45 @@ describe("Helix viewer UI contract", () => {
     );
     expect(css).toMatch(
       /@media \(forced-colors: active\)[\s\S]*--speaker-buddy-border: Highlight/,
+    );
+  });
+
+  it("기존 섹션 이모지를 중립적인 선형 아이콘과 텍스트 제목으로 바꾼다", () => {
+    expect(app).toContain("sectionHeadingPresentation");
+    expect(app).toContain('class="section-heading-icon" aria-hidden="true"');
+    expect(app).toContain('focusable="false"');
+    expect(app).toContain('class="section-heading section-heading-${kind}"');
+    expect(app).not.toContain("<h3>${esc(sec.heading)}</h3>");
+    expect(css).toContain(".section-heading-icon svg");
+  });
+
+  it("Layer 표시와 이동 제어를 군더더기 없이 같은 축에 정렬한다", () => {
+    expect(app).not.toContain('${isLatest ? " · 최신" : ""}');
+    expect(app).not.toContain('aria-label="최신 Layer');
+    expect(app).toContain('aria-current="step"');
+    expect(app).toMatch(/const current =[\s\S]*?String\(layer\.index\) === target/);
+    expect(app).toContain("layer.index === current?.index");
+    expect(app).toContain('class="layer-jump-toggle"');
+    expect(app).toContain('aria-controls="layer-jump-links"');
+    expect(app).toContain('class="layer-jump-links" id="layer-jump-links" hidden');
+    expect(app).toContain('layerJumpButton.setAttribute("aria-expanded"');
+    expect(css).toContain("--layer-rail-gap: 1.1rem");
+    expect(lastRule(css, ".layer-jump")).toContain("align-items: center");
+    expect(lastRule(css, ".layer-jump-links")).toContain("align-items: center");
+    expect(lastRule(css, ".layer-jump-links")).toContain("padding: 7px 4px");
+    expect(lastRule(css, ".layer-jump-toggle")).toContain("align-items: center");
+    expect(lastRule(css, ".layer-jump a:not(.latest-link)")).toContain(
+      "place-items: center",
+    );
+    expect(lastRule(css, ".layer-jump a:not(.latest-link)")).toContain(
+      "line-height: 1",
+    );
+    expect(lastRule(css, ".layer-card.current-layer::before")).toContain(
+      "left: calc(-1 * var(--layer-rail-gap))",
+    );
+    expect(lastRule(css, ".qchip.add")).toContain("padding-left: 0.8rem");
+    expect(lastRule(css, ".qchip.add")).toContain(
+      "border-left-color: var(--accent-border)",
     );
   });
 
@@ -193,6 +243,8 @@ describe("Helix viewer UI contract", () => {
     expect(contrast(token(dark, "field-border"), token(dark, "paper"))).toBeGreaterThan(3);
     expect(contrast(token(dark, "text"), token(dark, "paper"))).toBeGreaterThan(7);
     expect(contrast(token(dark, "text-faint"), token(dark, "paper"))).toBeGreaterThan(4.5);
+    expect(token(light, "focus-ring")).toBe(token(light, "accent"));
+    expect(token(dark, "focus-ring")).toBe(token(dark, "accent"));
     expect(css).toContain(".side-search:focus-within");
     expect(map).toContain("refreshTheme()");
   });
@@ -362,7 +414,50 @@ describe("Helix viewer UI contract", () => {
       /syncBookmarkCount\(subjects\)[\s\S]*?knownSubjectIds = new Set/,
     );
     expect(css).toContain(".bookmark-toggle[aria-pressed=\"true\"]");
+    expect(css).toContain("--bookmark-control-size: 40px");
+    expect(css).toContain("--bookmark-icon-size: 18px");
+    expect(lastRule(css, ".bookmark-remove")).toContain("top: 50%");
+    expect(lastRule(css, ".bookmark-remove")).toContain(
+      "transform: translateY(-50%)",
+    );
+    expect(lastRule(css, ".bookmark-remove")).toContain(
+      "width: var(--bookmark-control-size)",
+    );
+    expect(ruleBodies(css, ".bookmark-toggle").join("\n")).toContain(
+      "min-height: var(--bookmark-control-size)",
+    );
     expect(css).toContain('@media (forced-colors: active)');
     expect(css).toContain("--text: CanvasText");
+    expect(css).toContain("--focus-ring: Highlight");
+  });
+
+  it("검색 포커스는 내부 테두리 없이 하나의 accent 외곽선만 사용한다", () => {
+    expect(lastRule(css, ".question-filter input:focus-visible")).toContain(
+      "border-color: transparent",
+    );
+    expect(lastRule(css, ".side-search:focus-within")).toContain(
+      "border-color: transparent",
+    );
+    expect(lastRule(css, ".side-search:focus-within")).toContain(
+      "outline: 2px solid var(--focus-ring)",
+    );
+    expect(lastRule(css, ".side-search:focus-within")).toContain(
+      "box-shadow: none",
+    );
+  });
+
+  it("현재 Layer·질문 상태·북마크가 같은 accent 상태 토큰을 공유한다", () => {
+    expect(lastRule(css, ".layer-jump a.current")).toContain(
+      "background: var(--accent-soft)",
+    );
+    expect(lastRule(css, ".subject-row .row-meta .oq")).toContain(
+      "color: var(--accent)",
+    );
+    expect(lastRule(css, ".si-oq")).toContain("background: var(--accent)");
+    expect(
+      ruleBodies(css, '.bookmark-toggle[aria-pressed="true"]').join("\n"),
+    ).toContain(
+      "background: var(--accent-soft)",
+    );
   });
 });
