@@ -8,6 +8,10 @@ import {
   sortSubjects,
   toggleBookmark,
 } from "/experience.js";
+import {
+  renderMarkdown as mdBlock,
+  renderMarkdownInline as mdInline,
+} from "/markdown.js";
 
 const app = document.getElementById("app");
 const sideSearchInput = document.getElementById("side-search-input");
@@ -1518,119 +1522,6 @@ function esc(raw) {
     (ch) =>
       ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[ch],
   );
-}
-
-function mdInline(raw) {
-  return esc(raw)
-    .replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>")
-    .replace(/\*([^*\s][^*]*)\*/g, "<em>$1</em>") // ** 처리 후 남은 단일 * = 이탤릭
-    .replace(/`([^`]+)`/g, "<code>$1</code>");
-}
-
-/**
- * 경량 신택스 하이라이터 (의존성 0) — 언어 불문 범용 토큰:
- * 주석 · 문자열 · @어노테이션 · 숫자 · 키워드 · 타입(대문자 시작) · 함수 호출.
- * 토큰별로 esc 처리하므로 XSS-safe. 학습 노트의 Java/JS/SQL/Python 코드에 충분한 수준.
- */
-const CODE_TOKEN_RE = new RegExp(
-  [
-    /(\/\*[\s\S]*?\*\/|\/\/[^\n]*)/, // 1 주석 (블록·라인)
-    /("(?:[^"\\\n]|\\.)*"|'(?:[^'\\\n]|\\.)*'|`(?:[^`\\]|\\.)*`)/, // 2 문자열
-    /((?<=^|[\s(])#[^\n]*)/, // 3 # 주석 (파이썬/셸)
-    /(@[A-Za-z_]\w*)/, // 4 어노테이션
-    /(\b(?:0x[\da-fA-F_]+|\d[\d_]*(?:\.\d+)?[fFLdD]?)\b)/, // 5 숫자
-    /(\b(?:abstract|async|await|boolean|break|byte|case|catch|char|class|const|continue|def|delete|do|double|else|enum|extends|final|finally|float|for|from|fun|function|if|implements|import|in|instanceof|int|interface|is|lambda|let|long|new|not|null|of|or|and|package|print|private|protected|public|record|return|select|short|static|super|switch|this|throw|throws|try|typeof|val|var|void|when|where|while|yield|true|false|None|True|False)\b)/, // 6 키워드
-    /(\b[A-Z]\w*\b)/, // 7 타입/상수 (대문자 시작)
-    /(\b[a-z_]\w*(?=\s*\())/, // 8 함수 호출
-  ]
-    .map((r) => r.source)
-    .join("|"),
-  "gm",
-);
-const CODE_TOKEN_CLS = ["tk-c", "tk-s", "tk-c", "tk-a", "tk-n", "tk-k", "tk-t", "tk-f"];
-
-function highlightCode(src) {
-  let out = "";
-  let last = 0;
-  let m;
-  CODE_TOKEN_RE.lastIndex = 0;
-  while ((m = CODE_TOKEN_RE.exec(src))) {
-    out += esc(src.slice(last, m.index));
-    const gi = m.slice(1).findIndex((g) => g !== undefined);
-    out += `<span class="${CODE_TOKEN_CLS[gi]}">${esc(m[0])}</span>`;
-    last = m.index + m[0].length;
-  }
-  return out + esc(src.slice(last));
-}
-
-/** 블록 마크다운(불릿·번호목록·코드펜스·문단) → 안전한 HTML. 섹션 본문용 — esc 후 변환이라 XSS-safe. */
-function mdBlock(raw) {
-  const lines = String(raw).replace(/\r\n?/g, "\n").split("\n");
-  const out = [];
-  const para = [];
-  let list = null;
-  let code = null;
-  const codeHTML = (buf) =>
-    `<pre class="codeblock"><code>${highlightCode(buf.join("\n"))}</code></pre>`;
-  const flushPara = () => {
-    if (para.length) {
-      out.push(`<p>${mdInline(para.join(" "))}</p>`);
-      para.length = 0;
-    }
-  };
-  const flushList = () => {
-    if (!list) return;
-    out.push(
-      `<ul>${list
-        .map(
-          (it) =>
-            `<li class="${it.num ? "li-num" : ""}${it.ind ? " li-1" : ""}">${mdInline(it.text)}</li>`,
-        )
-        .join("")}</ul>`,
-    );
-    list = null;
-  };
-
-  for (const line of lines) {
-    if (code) {
-      if (/^\s*```/.test(line)) {
-        out.push(codeHTML(code.buf));
-        code = null;
-      } else {
-        code.buf.push(line);
-      }
-      continue;
-    }
-    if (/^\s*```/.test(line)) {
-      flushPara();
-      flushList();
-      code = { buf: [] };
-      continue;
-    }
-    const li = line.match(/^(\s*)[-*]\s+(.+)$/);
-    if (li) {
-      flushPara();
-      (list ??= []).push({ ind: li[1].length >= 2 ? 1 : 0, text: li[2], num: false });
-      continue;
-    }
-    const oli = line.match(/^(\s*)(\d+[.)])\s+(.+)$/);
-    if (oli) {
-      flushPara();
-      (list ??= []).push({ ind: oli[1].length >= 2 ? 1 : 0, text: `${oli[2]} ${oli[3]}`, num: true });
-      continue;
-    }
-    if (!line.trim()) {
-      flushPara();
-      flushList();
-      continue;
-    }
-    flushList();
-    para.push(line.trim());
-  }
-  if (code) out.push(codeHTML(code.buf)); // 닫히지 않은 펜스도 코드로 처리
-  flushPara();
-  flushList();
-  return out.join("");
 }
 
 function plain(raw) {

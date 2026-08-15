@@ -2,12 +2,13 @@ import { readFile } from "node:fs/promises";
 import { describe, expect, it } from "vitest";
 
 const publicDir = new URL("../public/", import.meta.url);
-const [html, app, css, map, themeInit] = await Promise.all([
+const [html, app, css, map, themeInit, markdown] = await Promise.all([
   readFile(new URL("index.html", publicDir), "utf8"),
   readFile(new URL("app.js", publicDir), "utf8"),
   readFile(new URL("styles.css", publicDir), "utf8"),
   readFile(new URL("spiralmap.js", publicDir), "utf8"),
   readFile(new URL("theme-init.js", publicDir), "utf8"),
+  readFile(new URL("markdown.js", publicDir), "utf8"),
 ]);
 
 function token(block, name) {
@@ -69,6 +70,19 @@ describe("Helix viewer UI contract", () => {
     expect(app).toContain("Layer 이동");
     expect(app).toContain("?chapter=");
     expect(app).toContain("focusGroup:");
+  });
+
+  it("외부 CDN 없이 안전한 Markdown과 Obsidian callout을 렌더한다", () => {
+    expect(app).toContain('from "/markdown.js"');
+    expect(markdown).toContain("export function renderMarkdown(raw)");
+    expect(markdown).toContain("function renderCallout");
+    expect(markdown).toContain("function renderTable");
+    expect(markdown).toContain("function safeHref");
+    expect(markdown).toContain("escapeHtml");
+    expect(html).not.toContain("cdn.jsdelivr.net");
+    expect(html).not.toContain("unpkg.com");
+    expect(css).toContain(".section .md .md-callout");
+    expect(css).toContain(".section .md .md-table-wrap");
   });
 
   it("과장된 콘셉트 라벨과 지도 메타데이터를 기본 화면에서 제거한다", () => {

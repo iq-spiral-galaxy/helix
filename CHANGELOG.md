@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.2.2 — 2026-08-15
+
+- Obsidian 접이식 콜아웃과 중첩 인용문을 원래 구조대로 표시
+- 인용문 안 코드 펜스, 제목, 구분선, 목록, 체크박스와 GFM 표 렌더링 지원
+- Raw HTML과 위험한 링크를 실행하지 않는 안전한 Markdown 렌더러 추가
+- `repo/roadmap/chapter` 형식 노트 가져오기와 레포·챕터 통합 검색 지원
+- `db-internals` 검색으로 Database Internals 지도와 17개 나선을 찾을 수 있도록 개선
+
 ## 0.2.1 — 2026-07-29
 
 - 설치된 데스크톱 앱이 시작할 때 종료되던 ESM/CommonJS 호환성 문제 수정

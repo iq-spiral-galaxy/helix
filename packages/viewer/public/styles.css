@@ -522,7 +522,7 @@ a.hero-badge:hover { border-color: var(--link-border); color: var(--link); }
 
 /* 전체 내용 토글 — 눈에 띄는 디스클로저 행 */
 details.sections { margin-top: 0.9rem; }
-details.sections summary {
+details.sections > summary {
   list-style: none;
   display: flex;
   align-items: center;
@@ -537,16 +537,16 @@ details.sections summary {
   user-select: none;
   transition: background 0.14s, color 0.14s, border-color 0.14s;
 }
-details.sections summary::-webkit-details-marker { display: none; }
-details.sections summary::before {
+details.sections > summary::-webkit-details-marker { display: none; }
+details.sections > summary::before {
   content: "▸";
   font-size: 0.7rem;
   color: var(--text-faint);
   transition: transform 0.15s;
 }
-details.sections[open] summary::before { transform: rotate(90deg); }
-details.sections summary:hover { background: var(--raised); color: var(--text); border-color: var(--border); }
-details.sections summary .sum-count {
+details.sections[open] > summary::before { transform: rotate(90deg); }
+details.sections > summary:hover { background: var(--raised); color: var(--text); border-color: var(--border); }
+details.sections > summary .sum-count {
   margin-left: auto;
   font-family: var(--mono);
   font-size: 0.64rem;
@@ -560,28 +560,155 @@ details.sections:not([open]) .sum-open { display: none; }
 
 /* 섹션 본문 마크다운 */
 .section .md p { margin: 0 0 0.55rem; color: var(--text-soft); font-size: 0.88rem; line-height: 1.7; }
-.section .md ul { list-style: none; margin: 0 0 0.6rem; padding-left: 1.05rem; }
+.section .md ul,
+.section .md ol { margin: 0 0 0.65rem; padding-left: 1.35rem; }
+.section .md ul { list-style: disc; }
+.section .md ol { list-style: decimal; }
 .section .md li {
-  position: relative;
   color: var(--text-soft);
   font-size: 0.88rem;
   line-height: 1.65;
   margin: 0.18rem 0;
 }
-.section .md li::before {
-  content: "";
-  position: absolute;
-  left: -0.95rem;
-  top: 0.66em;
-  width: 4px;
-  height: 4px;
-  border-radius: 50%;
-  background: var(--text-ghost);
+.section .md li::marker { color: var(--text-faint); }
+.section .md li > ul,
+.section .md li > ol { margin: 0.2rem 0 0.15rem; }
+.section .md .md-task {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.45rem;
 }
-.section .md li.li-1 { margin-left: 1.05rem; }
-.section .md li.li-num::before { content: none; }
-.section .md li.li-num { padding-left: 0; }
+.section .md .md-task input {
+  width: 0.9rem;
+  height: 0.9rem;
+  margin: 0;
+  accent-color: var(--accent);
+}
 .section .md strong, .section .md p strong, .section .md li strong { color: var(--text); }
+.section .md em { color: var(--text-soft); }
+.section .md del { color: var(--text-faint); }
+.section .md a { color: var(--link); text-underline-offset: 0.16em; }
+.section .md .md-unsafe-link { color: var(--text-faint); }
+.section .md > :first-child,
+.section .md .md-callout-body > :first-child,
+.section .md blockquote > :first-child { margin-top: 0; }
+.section .md > :last-child,
+.section .md .md-callout-body > :last-child,
+.section .md blockquote > :last-child { margin-bottom: 0; }
+.section .md h1,
+.section .md h2,
+.section .md h3,
+.section .md h4,
+.section .md h5,
+.section .md h6 {
+  color: var(--text);
+  line-height: 1.35;
+  margin: 1.15rem 0 0.45rem;
+  letter-spacing: -0.012em;
+}
+.section .md h1 { font-size: 1.16rem; }
+.section .md h2 { font-size: 1.08rem; }
+.section .md h3 { font-size: 1rem; }
+.section .md h4,
+.section .md h5,
+.section .md h6 { font-size: 0.94rem; }
+.section .md hr {
+  border: 0;
+  border-top: 1px solid var(--border-faint);
+  margin: 1rem 0;
+}
+.section .md blockquote {
+  border-left: 2px solid var(--border);
+  margin: 0.65rem 0;
+  padding: 0.1rem 0 0.1rem 0.85rem;
+  color: var(--text-soft);
+}
+.section .md blockquote blockquote {
+  border-left-color: var(--link-border);
+  margin-left: 0.15rem;
+}
+.section .md .md-callout {
+  border: 1px solid var(--border-faint);
+  border-left: 3px solid var(--link-border);
+  border-radius: 8px;
+  background: var(--raised-soft);
+  margin: 0.7rem 0;
+  overflow: clip;
+}
+.section .md details.md-callout > summary,
+.section .md .md-callout-title {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  padding: 0.72rem 0.85rem;
+  color: var(--text);
+  font-size: 0.86rem;
+  font-weight: 600;
+  line-height: 1.45;
+}
+.section .md details.md-callout > summary {
+  list-style: none;
+  cursor: pointer;
+  user-select: none;
+}
+.section .md details.md-callout > summary::-webkit-details-marker { display: none; }
+.section .md details.md-callout > summary::after {
+  content: "▸";
+  margin-left: auto;
+  color: var(--text-faint);
+  font-size: 0.7rem;
+  transition: transform 0.15s;
+}
+.section .md details.md-callout[open] > summary::after { transform: rotate(90deg); }
+.section .md details.md-callout > summary:hover { background: var(--raised); }
+.section .md .md-callout-icon {
+  display: inline-grid;
+  flex: 0 0 auto;
+  place-items: center;
+  width: 1.15rem;
+  height: 1.15rem;
+  border: 1px solid var(--link-border);
+  border-radius: 50%;
+  color: var(--link);
+  font-family: var(--mono);
+  font-size: 0.7rem;
+  line-height: 1;
+}
+.section .md .md-callout-body {
+  border-top: 1px solid var(--border-faint);
+  padding: 0.8rem 0.9rem 0.9rem;
+}
+.section .md .md-table-wrap {
+  overflow-x: auto;
+  margin: 0.55rem 0 0.8rem;
+  border: 1px solid var(--border-faint);
+  border-radius: 8px;
+}
+.section .md table {
+  width: 100%;
+  min-width: 28rem;
+  border-collapse: collapse;
+  color: var(--text-soft);
+  font-size: 0.82rem;
+  line-height: 1.55;
+}
+.section .md th,
+.section .md td {
+  padding: 0.5rem 0.65rem;
+  border-right: 1px solid var(--border-faint);
+  border-bottom: 1px solid var(--border-faint);
+  vertical-align: top;
+}
+.section .md th:last-child,
+.section .md td:last-child { border-right: 0; }
+.section .md tbody tr:last-child td { border-bottom: 0; }
+.section .md th {
+  background: var(--raised);
+  color: var(--text);
+  font-weight: 600;
+}
+.section .md .align-center { text-align: center; }
+.section .md .align-right { text-align: right; }
 .section .md pre.codeblock {
   background: var(--raised-soft);
   border: 1px solid var(--border-faint);
@@ -1500,7 +1627,7 @@ main[data-page="q"] { max-width: 980px; }
 .qchip { font-size: 0.88rem; }
 .qid,
 .q-row .qmark { font-size: 0.68rem; }
-details.sections summary {
+details.sections > summary {
   min-height: 42px;
   font-size: 0.86rem;
 }
@@ -2418,11 +2545,11 @@ main[data-page="q"] { max-width: 860px; }
   font-size: 0.68rem;
 }
 .layer-lede { font-size: 0.96rem; }
-details.sections summary {
+details.sections > summary {
   border-color: var(--border-faint);
   background: transparent;
 }
-details.sections summary:hover { background: var(--raised-soft); }
+details.sections > summary:hover { background: var(--raised-soft); }
 
 .conn-panel {
   margin-top: 2rem;
