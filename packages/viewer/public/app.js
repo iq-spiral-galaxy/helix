@@ -33,7 +33,6 @@ let routeToken = 0; // 모든 라우트의 느린 응답이 최신 화면을 덮
 let strandObserver = null;
 let strandFrame = 0;
 let bookmarkIds = [];
-let knownSubjectIds = null;
 let sidebarSubjects = [];
 let sidebarHierarchy = { repositories: [] };
 let sidebarSearchReady = false;
@@ -278,21 +277,7 @@ function saveBookmarkIds(next) {
   try {
     localStorage.setItem(BOOKMARK_KEY, JSON.stringify(bookmarkIds));
   } catch { /* 저장소 제한 시 현재 화면에서는 계속 동작 */ }
-  syncBookmarkCount();
   return bookmarkIds;
-}
-
-function syncBookmarkCount(subjects) {
-  if (Array.isArray(subjects)) {
-    knownSubjectIds = new Set(subjects.map((subject) => subject.id));
-  }
-  const count = document.getElementById("bookmark-count");
-  if (!count) return;
-  const total = knownSubjectIds
-    ? bookmarkIds.filter((id) => knownSubjectIds.has(id)).length
-    : bookmarkIds.length;
-  count.textContent = total ? String(total) : "";
-  count.setAttribute("aria-label", `저장한 북마크 ${total}개`);
 }
 
 function paintBookmarkButton(button, id) {
@@ -321,7 +306,6 @@ async function initSidebar() {
       getJSON("/api/subjects"),
       getJSON("/api/roadmaps"),
     ]);
-    syncBookmarkCount(subjects);
     sidebarSubjects = subjects;
     sidebarHierarchy = hierarchy;
     sidebarSearchReady = true;
@@ -481,7 +465,6 @@ document.getElementById("mobile-search").addEventListener("click", focusSideSear
 document.getElementById("mobile-bottom-search").addEventListener("click", focusSideSearch);
 mobileQuery.addEventListener("change", syncMobileSidebar);
 syncMobileSidebar();
-syncBookmarkCount();
 void route();
 void initSidebar();
 
@@ -670,7 +653,6 @@ window.addEventListener("storage", (event) => {
   }
   if (event.key === BOOKMARK_KEY) {
     bookmarkIds = parseBookmarkIds(event.newValue);
-    syncBookmarkCount();
     const button = document.querySelector("[data-bookmark-id]");
     if (button) paintBookmarkButton(button, button.dataset.bookmarkId);
     if (app.dataset.page === "bookmarks") void route();
@@ -799,21 +781,16 @@ function mark(text, q) {
 async function renderBookmarks(_id, token) {
   const subjects = await getJSON("/api/subjects");
   if (!routeIsCurrent(token)) return;
-  syncBookmarkCount(subjects);
 
   app.innerHTML = `
     <header class="collection-mast">
-      <h1 class="page-title">
-        북마크 <span class="title-count" id="bookmark-page-count"></span>
-      </h1>
+      <h1 class="page-title">북마크</h1>
     </header>
     <div class="bookmark-list" id="bookmark-list"></div>`;
 
   const list = document.getElementById("bookmark-list");
-  const pageCount = document.getElementById("bookmark-page-count");
   const paint = () => {
     const items = selectBookmarkItems(bookmarkIds, subjects);
-    pageCount.textContent = String(items.length);
     list.innerHTML = items.length
       ? items
           .map(
@@ -1116,7 +1093,6 @@ function subjectRow(s) {
     <a class="subject-row" href="#/s/${encodeURIComponent(s.id)}">
       <div class="subject-title-line">
         <h3>${esc(displayTitle(s.title))}</h3>
-        <span class="subject-arrow" aria-hidden="true">→</span>
       </div>
       <div class="row-meta">
         ${metaMark("layer", s.layerCount)}

@@ -42,8 +42,12 @@ export function sectionHeadingPresentation(value) {
   const marker = SECTION_HEADING_MARKERS.find(({ pattern }) =>
     pattern.test(heading),
   );
-  const label = marker ? heading.replace(marker.pattern, "").trim() : heading;
-  return { kind: marker?.kind ?? canonicalSectionHeadingKind(label), label };
+  const rawLabel = marker ? heading.replace(marker.pattern, "").trim() : heading;
+  const kind = marker?.kind ?? canonicalSectionHeadingKind(rawLabel);
+  const label = /^학습 중 찾아본 표현\s*\(\d+\)$/u.test(rawLabel)
+    ? "학습 중 찾아본 표현"
+    : rawLabel;
+  return { kind, label };
 }
 
 /**

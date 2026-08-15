@@ -262,9 +262,6 @@ code {
 }
 .side-nav a:hover { background: var(--raised-soft); color: var(--text); }
 .side-nav a[aria-current="page"] { background: var(--accent-soft); color: var(--accent); }
-.side-nav .count { margin-left: auto; font-family: var(--mono); font-size: 0.66rem; color: var(--text-faint); }
-.side-nav .count:empty { display: none; }
-
 .side-label { padding: 0 11px; margin: 18px 0 8px; }
 
 .side-list { flex: 1; overflow-y: auto; min-height: 0; padding-bottom: 8px; }
@@ -1535,14 +1532,6 @@ main[data-page="q"] { max-width: 980px; }
   gap: 0.75rem;
 }
 .subject-title-line h3 { flex: 1; font-size: 1rem; }
-.subject-arrow {
-  color: var(--text-ghost);
-  transition: color 0.14s, transform 0.14s;
-}
-.subject-row:hover .subject-arrow {
-  color: var(--accent);
-  transform: translate(2px, -2px);
-}
 .row-meta { font-size: 0.72rem; }
 .tag { font-size: 0.68rem; }
 
@@ -2472,14 +2461,6 @@ main[data-page="q"] { max-width: 860px; }
   white-space: nowrap;
 }
 .subject-row:hover h3 { color: var(--text); }
-.subject-arrow {
-  color: var(--text-ghost);
-  transform: none;
-}
-.subject-row:hover .subject-arrow {
-  color: var(--accent);
-  transform: none;
-}
 .subject-row .row-meta {
   flex: none;
   margin: 0;
@@ -2853,21 +2834,23 @@ details.sections > summary:hover { background: var(--raised-soft); }
 }
 .conn-panel > summary {
   display: flex;
-  min-height: 48px;
+  min-height: 60px;
   align-items: center;
-  gap: 8px;
+  padding: 0 12px;
   cursor: pointer;
   list-style: none;
   color: var(--text-soft);
-  font-size: 0.84rem;
+  border-radius: 8px;
+  font-size: 0.94rem;
   font-weight: 600;
+  transition: background 0.14s, color 0.14s;
 }
-.conn-panel > summary::before {
-  content: "▸";
-  color: var(--text-faint);
-  font-size: 0.66rem;
+.conn-panel > summary::-webkit-details-marker { display: none; }
+.conn-panel > summary::marker { content: ""; }
+.conn-panel > summary:hover {
+  background: var(--raised-soft);
+  color: var(--text);
 }
-.conn-panel[open] > summary::before { transform: rotate(90deg); }
 .conn-body { padding-bottom: 0.8rem; }
 .conn-head { justify-content: flex-end; }
 .conn-h { margin-top: 1rem; }
@@ -2878,14 +2861,6 @@ details.sections > summary:hover { background: var(--raised-soft); }
 }
 .question-mast .page-title { margin: 0; }
 .question-total { display: flex; align-items: center; }
-.title-count {
-  margin-left: 0.35rem;
-  color: var(--text-faint);
-  font-family: var(--mono);
-  font-size: 0.72rem;
-  font-weight: 400;
-  vertical-align: 0.25em;
-}
 .question-stats,
 .question-focus { display: none; }
 .question-toolbar {

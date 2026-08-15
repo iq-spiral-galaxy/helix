@@ -49,7 +49,7 @@ describe("Helix viewer experience model", () => {
   it("기존 섹션 이모지를 데이터 변경 없이 표시용 제목과 종류로 분리한다", () => {
     expect(sectionHeadingPresentation("🔍 학습 중 찾아본 표현 (5)")).toEqual({
       kind: "lookup",
-      label: "학습 중 찾아본 표현 (5)",
+      label: "학습 중 찾아본 표현",
     });
     expect(sectionHeadingPresentation("💬 전체 대화")).toEqual({
       kind: "dialogue",
@@ -57,7 +57,7 @@ describe("Helix viewer experience model", () => {
     });
     expect(sectionHeadingPresentation("학습 중 찾아본 표현 (3)")).toEqual({
       kind: "lookup",
-      label: "학습 중 찾아본 표현 (3)",
+      label: "학습 중 찾아본 표현",
     });
     expect(sectionHeadingPresentation("전체 대화")).toEqual({
       kind: "dialogue",
@@ -66,6 +66,10 @@ describe("Helix viewer experience model", () => {
     expect(sectionHeadingPresentation("🎯 다음 목표")).toEqual({
       kind: null,
       label: "🎯 다음 목표",
+    });
+    expect(sectionHeadingPresentation("🔍 HTTP 404 (5)")).toEqual({
+      kind: "lookup",
+      label: "HTTP 404 (5)",
     });
   });
 

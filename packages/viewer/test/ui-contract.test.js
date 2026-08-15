@@ -123,6 +123,23 @@ describe("Helix viewer UI contract", () => {
     expect(css).toContain(".section-heading-icon svg");
   });
 
+  it("목록의 중복 이동 화살표를 없애고 연결 disclosure를 충분히 크게 유지한다", () => {
+    expect(app).not.toContain('class="subject-arrow"');
+    expect(css).not.toContain(".subject-arrow");
+    expect(app).toContain("<summary>연결</summary>");
+    expect(css).not.toContain(".conn-panel > summary::before");
+    expect(css).not.toContain(".conn-panel[open] > summary::before");
+    expect(lastRule(css, ".conn-panel > summary")).toContain(
+      "min-height: 60px",
+    );
+    expect(lastRule(css, ".conn-panel > summary")).toContain(
+      "font-size: 0.94rem",
+    );
+    expect(css).toContain(
+      ".conn-panel > summary::-webkit-details-marker { display: none; }",
+    );
+  });
+
   it("Layer 표시와 이동 제어를 군더더기 없이 같은 축에 정렬한다", () => {
     expect(app).not.toContain('${isLatest ? " · 최신" : ""}');
     expect(app).not.toContain('aria-label="최신 Layer');
@@ -434,7 +451,10 @@ describe("Helix viewer UI contract", () => {
 
   it("북마크 토글·목록·기기 저장·탭 간 동기화를 연결한다", () => {
     expect(html).toContain('id="side-bookmarks"');
-    expect(html).toContain('id="bookmark-count"');
+    expect(html).not.toContain('id="bookmark-count"');
+    expect(app).not.toContain('id="bookmark-page-count"');
+    expect(app).not.toContain("syncBookmarkCount");
+    expect(app).not.toContain("knownSubjectIds");
     expect(app).toContain('BOOKMARK_KEY = "helix.bookmarks"');
     expect(app).toContain("parseBookmarkIds");
     expect(app).toContain("toggleBookmark");
@@ -451,9 +471,6 @@ describe("Helix viewer UI contract", () => {
     );
     expect(app).toMatch(
       /renderBookmarks[\s\S]*?selectBookmarkItems\(bookmarkIds, subjects\)[\s\S]*?subjectRow\(subject\)/,
-    );
-    expect(app).toMatch(
-      /syncBookmarkCount\(subjects\)[\s\S]*?knownSubjectIds = new Set/,
     );
     expect(css).toContain(".bookmark-toggle[aria-pressed=\"true\"]");
     expect(css).toContain("--bookmark-control-size: 40px");
