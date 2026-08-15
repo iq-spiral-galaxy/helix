@@ -18,6 +18,10 @@ function questionKey(question) {
   return question?.id ?? question?.questionId ?? "";
 }
 
+function compareQuestionKey(a, b) {
+  return text(a).localeCompare(text(b), undefined, { numeric: true });
+}
+
 const SECTION_HEADING_MARKERS = [
   { pattern: /^🔍\uFE0F?\s*/u, kind: "lookup" },
   { pattern: /^💬\uFE0F?\s*/u, kind: "dialogue" },
@@ -301,6 +305,22 @@ export function sortOpenQuestions(
     );
   });
   return copy;
+}
+
+/**
+ * 상세 API에 실제로 존재하는 생성 Layer와 자연스러운 질문 번호 순으로 고정한다.
+ * 대표 질문 한 개와 같은 나선에서 이어 보여줄 나머지를 원본 변경 없이 나눈다.
+ */
+export function partitionOpenQuestions(questions = []) {
+  const ordered = questions.slice().sort(
+    (a, b) =>
+      (Number(a.raisedAtLayer) || 0) - (Number(b.raisedAtLayer) || 0) ||
+      compareQuestionKey(questionKey(a), questionKey(b)),
+  );
+  return {
+    primary: ordered[0] ?? null,
+    remaining: ordered.slice(1),
+  };
 }
 
 export function filterOpenQuestions(questions = [], query = "", titleById = {}) {

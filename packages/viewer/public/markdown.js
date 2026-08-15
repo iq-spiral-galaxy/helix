@@ -55,6 +55,27 @@ const CALLOUT_ICONS = {
   warning: "!",
 };
 
+const DEPTH_KINDS = {
+  "간결": "concise",
+  "중간": "medium",
+  "깊은": "deep",
+  "문맥": "context",
+  "질문": "question",
+};
+
+const DEPTH_ICON_PATHS = {
+  concise: '<path d="M4 7h6"/>',
+  medium: '<path d="M3.5 5.2h7M3.5 8.8h7"/>',
+  deep: '<path d="M3 4h8M3 7h8M3 10h8"/>',
+  context:
+    '<circle cx="4" cy="4" r="1.25"/><circle cx="10" cy="10" r="1.25"/>' +
+    '<path d="M4.9 4.9 9.1 9.1"/>',
+  question:
+    '<path d="M4.7 4.8a2.35 2.35 0 1 1 3.45 2.08C7.2 7.4 6.7 8 6.7 9"/>' +
+    '<circle cx="6.7" cy="11" r=".55" fill="currentColor" stroke="none"/>',
+  other: '<circle cx="7" cy="7" r="2.25"/>',
+};
+
 export function escapeHtml(raw) {
   return String(raw).replace(
     /[&<>"']/g,
@@ -407,15 +428,67 @@ function quoteLine(line) {
   return match ? match[1] : null;
 }
 
+function depthPresentation(label) {
+  const value = String(label).trim();
+  if (!value) return null;
+  return {
+    key: DEPTH_KINDS[value] ?? "other",
+    label: value,
+  };
+}
+
+function splitMarkdownDepth(raw) {
+  const source = String(raw);
+  const match = source.match(/^(.*?)\s+·\s+_([^_\r\n]+)_\s*$/u);
+  if (!match || !match[1].trim()) return { title: source, depth: null };
+  return {
+    title: match[1].trimEnd(),
+    depth: depthPresentation(match[2]),
+  };
+}
+
+function splitLegacyDepth(raw) {
+  const source = String(raw);
+  const match = source.match(
+    /^(.*?)\s+·\s+<em>([^<>\r\n]+)<\/em>\s*$/iu,
+  );
+  if (!match || !match[1].trim()) return { title: source, depth: null };
+  return {
+    title: match[1].trimEnd(),
+    depth: depthPresentation(match[2]),
+  };
+}
+
+function renderDepthBadge(depth) {
+  if (!depth) return "";
+  const icon = DEPTH_ICON_PATHS[depth.key] ?? DEPTH_ICON_PATHS.other;
+  return (
+    `<span class="md-depth md-depth-${depth.key}">` +
+    `<svg class="md-depth-icon" viewBox="0 0 14 14" fill="none" ` +
+    `stroke="currentColor" stroke-width="1.4" stroke-linecap="round" ` +
+    `stroke-linejoin="round" aria-hidden="true" focusable="false">${icon}</svg>` +
+    `<span class="sr-only">표현 깊이: </span>` +
+    `<span class="md-depth-label">${escapeHtml(depth.label)}</span>` +
+    `</span>`
+  );
+}
+
+function stripQuoteMessageCount(title, type) {
+  if (type !== "quote") return title;
+  return title.replace(/\s+\(\d+개 메시지\)\s*$/u, "").trimEnd();
+}
+
 function renderCallout(lines, callout, depth) {
   const type = callout[1].toLowerCase();
   const fold = callout[2] ?? "";
-  const title = callout[3].trim() || CALLOUT_LABELS[type] || "노트";
+  const rawTitle = callout[3].trim() || CALLOUT_LABELS[type] || "노트";
+  const presented = splitMarkdownDepth(stripQuoteMessageCount(rawTitle, type));
   const icon = CALLOUT_ICONS[type] || "•";
   const body = renderBlocks(lines.slice(1), depth + 1);
   const heading =
     `<span class="md-callout-icon" aria-hidden="true">${escapeHtml(icon)}</span>` +
-    `<span>${renderMarkdownInline(title)}</span>`;
+    `<span class="md-callout-label">${renderMarkdownInline(presented.title)}</span>` +
+    renderDepthBadge(presented.depth);
   const className = `md-callout md-callout-${type.replace(/[^a-z0-9_-]/g, "")}`;
 
   if (fold) {
@@ -540,17 +613,22 @@ function legacySummaryAt(line) {
 }
 
 function renderLegacySummary(raw) {
+  const presented = splitLegacyDepth(raw);
   const tag = /<(strong|em)>([\s\S]*?)<\/\1>/gi;
   let out = "";
   let last = 0;
   let match;
-  while ((match = tag.exec(raw))) {
-    out += renderMarkdownInline(raw.slice(last, match.index));
+  while ((match = tag.exec(presented.title))) {
+    out += renderMarkdownInline(presented.title.slice(last, match.index));
     const element = match[1].toLowerCase();
     out += `<${element}>${renderMarkdownInline(match[2])}</${element}>`;
     last = match.index + match[0].length;
   }
-  return out + renderMarkdownInline(raw.slice(last));
+  return (
+    out +
+    renderMarkdownInline(presented.title.slice(last)) +
+    renderDepthBadge(presented.depth)
+  );
 }
 
 function matchingLegacyClose(lines, start, open, close) {

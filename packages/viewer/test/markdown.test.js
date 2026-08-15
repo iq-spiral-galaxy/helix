@@ -26,7 +26,8 @@ describe("Helix Markdown renderer", () => {
 `);
 
     expect(html).toContain('<details class="md-callout md-callout-quote">');
-    expect(html).toContain("펼쳐서 대화 전체 다시 보기 (27개 메시지)");
+    expect(html).toContain("펼쳐서 대화 전체 다시 보기");
+    expect(html).not.toContain("27개 메시지");
     expect(html).toContain('class="md-dialogue-turn md-dialogue-turn-buddy"');
     expect(html).toContain('<div class="md-dialogue" role="list" aria-label="나와 버디의 대화">');
     expect(html).toContain('<svg class="md-dialogue-symbol"');
@@ -67,6 +68,68 @@ describe("Helix Markdown renderer", () => {
     expect(html).toContain("<hr>");
     expect(html).toContain('<details class="md-callout md-callout-tip" open>');
     expect(html).toContain("중요한 <strong>팁</strong>입니다.");
+  });
+
+  it.each([
+    ["간결", "concise"],
+    ["중간", "medium"],
+    ["깊은", "deep"],
+    ["문맥", "context"],
+    ["질문", "question"],
+    ["실험", "other"],
+  ])("callout 표현 깊이 %s를 안전한 %s 배지로 분리한다", (label, kind) => {
+    const html = renderMarkdown(`
+> [!note]- 테스트 제목 · _${label}_
+> 본문
+`);
+
+    expect(html).toContain(`class="md-depth md-depth-${kind}"`);
+    expect(html).toContain('class="md-depth-icon"');
+    expect(html).toContain('<span class="sr-only">표현 깊이: </span>');
+    expect(html).toContain(`<span class="md-depth-label">${label}</span>`);
+    expect(html).not.toContain(`· <em>${label}</em>`);
+  });
+
+  it("깊이처럼 보이는 제목 중간 표현은 배지로 오인하지 않는다", () => {
+    const html = renderMarkdown(`
+> [!note]- 테스트 · _중간_ 뒤에 설명
+> 본문
+`);
+
+    expect(html).not.toContain('class="md-depth');
+    expect(html).toContain("테스트 · <em>중간</em> 뒤에 설명");
+  });
+
+  it("알 수 없는 깊이 라벨도 neutral 배지에 이스케이프해 보존한다", () => {
+    const html = renderMarkdown(`
+> [!note]- 테스트 · _<img src=x onerror=alert(1)>_
+> 본문
+`);
+
+    expect(html).toContain('class="md-depth md-depth-other"');
+    expect(html).toContain(
+      '<span class="md-depth-label">&lt;img src=x onerror=alert(1)&gt;</span>',
+    );
+    expect(html).not.toContain("<img");
+  });
+
+  it("quote의 정확한 메시지 수 suffix만 표시에서 제거한다", () => {
+    const stripped = renderMarkdown(`
+> [!quote]- 펼쳐서 대화 전체 다시 보기 (31개 메시지)
+> 본문
+`);
+    const preservedQuote = renderMarkdown(`
+> [!quote]- 진단 결과 (31개 메시지 추가)
+> 본문
+`);
+    const preservedNote = renderMarkdown(`
+> [!note]- 진단 결과 (31개 메시지)
+> 본문
+`);
+
+    expect(stripped).not.toContain("31개 메시지");
+    expect(preservedQuote).toContain("진단 결과 (31개 메시지 추가)");
+    expect(preservedNote).toContain("진단 결과 (31개 메시지)");
   });
 
   it("raw HTML과 위험한 링크를 실행 가능한 마크업으로 만들지 않는다", () => {
@@ -143,7 +206,10 @@ Change Buffer: Secondary Index 쓰기 최적화
 `);
 
     expect(html).toContain('<details class="md-legacy-details">');
-    expect(html).toContain("<summary><strong>해설 보기</strong> · <em>중간</em></summary>");
+    expect(html).toContain("<summary><strong>해설 보기</strong>");
+    expect(html).toContain('class="md-depth md-depth-medium"');
+    expect(html).toContain('<span class="md-depth-label">중간</span>');
+    expect(html).not.toContain("· <em>중간</em>");
     expect(html).toContain("본문의 <strong>강조</strong>");
     expect(html).toContain("&lt;img src=x onerror=&quot;alert(1)&quot;&gt;");
     expect(html).not.toContain("<img");
@@ -171,9 +237,10 @@ Change Buffer: Secondary Index 쓰기 최적화
 <summary><strong>Redo Log</strong> · <em>중간</em></summary>
 `);
 
-    expect(html).toBe(
-      '<p class="md-legacy-summary"><strong>Redo Log</strong> · <em>중간</em></p>',
-    );
+    expect(html).toContain('<p class="md-legacy-summary"><strong>Redo Log</strong>');
+    expect(html).toContain('class="md-depth md-depth-medium"');
+    expect(html).toContain('<span class="md-depth-label">중간</span>');
+    expect(html).not.toContain("· <em>중간</em>");
   });
 
   it("인라인 코드 안의 강조 문법과 SQL 식별자 underscore를 그대로 둔다", () => {

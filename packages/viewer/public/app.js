@@ -1,6 +1,7 @@
 import {
   filterOpenQuestions,
   filterSidebarItems,
+  partitionOpenQuestions,
   parseBookmarkIds,
   sectionHeadingPresentation,
   selectHomeFocus,
@@ -879,37 +880,21 @@ async function renderHome(_id, token) {
     </header>
     <section class="continue-panel" aria-labelledby="continue-title">
       <div class="continue-copy">
-        <span class="continue-label">${focus.question ? "다음 질문" : "이어서 보기"}</span>
+        <span class="continue-label">
+          ${focus.question ? `${metaMark("question")}<span>다음 질문</span>` : "이어서 보기"}
+        </span>
         <h2 id="continue-title">${esc(displayTitle(focus.subject.title))}</h2>
         <p>${focus.question ? mdInline(focusText) : esc(focusText)}</p>
-        <span class="continue-context">Layer ${focusLayer}</span>
+        <span class="continue-context">${metaMark("layer", focusLayer)}</span>
       </div>
       <a class="continue-action" href="${focusRoute}">
         ${focus.question ? "질문 이어보기" : "노트 열기"} <span aria-hidden="true">→</span>
       </a>
     </section>
-    <div class="sec-head">
-      <h2>노트</h2>
-      <div class="subject-sort" role="group" aria-label="나선 정렬">
-        <button type="button" data-home-sort="recent" aria-pressed="true">최근</button>
-        <button type="button" data-home-sort="questions" aria-pressed="false">질문</button>
-      </div>
-    </div>
-    <div class="subject-list" id="home-subject-list"></div>`;
-
-  const list = document.getElementById("home-subject-list");
-  const paintSubjects = (mode) => {
-    list.innerHTML = sortSubjects(subjects, mode).map(subjectRow).join("");
-  };
-  paintSubjects("recent");
-  app.querySelector(".subject-sort").addEventListener("click", (event) => {
-    const button = event.target.closest("[data-home-sort]");
-    if (!button) return;
-    for (const option of app.querySelectorAll("[data-home-sort]")) {
-      option.setAttribute("aria-pressed", String(option === button));
-    }
-    paintSubjects(button.dataset.homeSort);
-  });
+    <div class="sec-head"><h2>노트</h2></div>
+    <div class="subject-list" id="home-subject-list">
+      ${sortSubjects(subjects, "recent").map(subjectRow).join("")}
+    </div>`;
 }
 
 /* ---------- 나선 학습 지도 ---------- */
@@ -986,6 +971,7 @@ async function renderMap(repoKey, routeEpoch) {
         (n) => `<li${n.roadmapId === selectedChapter ? ` class="current-chapter"` : ""}><a href="#/s/${encodeURIComponent(n.id)}">
       <span class="mf-title">${esc(displayTitle(n.title))}</span>
       ${n.roadmapTitle ? `<span class="mf-rm">${esc(n.roadmapTitle)}</span>` : ""}
+      <span class="mf-meta">${metaMark("layer", n.layerCount)}${n.oqCount ? metaMark("question", n.oqCount) : ""}</span>
     </a></li>`,
       )
       .join("");
@@ -1055,6 +1041,7 @@ async function renderMap(repoKey, routeEpoch) {
       .map(
         (c) => `<li><a href="#/map/${encodeURIComponent(c.roadmapId)}?chapter=${encodeURIComponent(c.id)}">
       <span class="mf-title">${esc(c.title)}</span>
+      <span class="mf-meta">${metaMark("layer", c.layerCount)}${c.oqCount ? metaMark("question", c.oqCount) : ""}</span>
     </a></li>`,
       )
       .join("");
@@ -1092,6 +1079,38 @@ async function renderMap(repoKey, routeEpoch) {
   }
 }
 
+function metaMarkIcon(kind) {
+  if (kind === "question") {
+    return `<svg class="meta-mark-icon" viewBox="0 0 24 24" fill="none"
+      stroke="currentColor" stroke-width="1.7" stroke-linecap="round"
+      stroke-linejoin="round" aria-hidden="true" focusable="false">
+      <path d="M6.5 5.5h9a3 3 0 0 1 3 3v3a3 3 0 0 1-3 3H11l-4.5 3v-3.4a3 3 0 0 1-2-2.8V8.5a3 3 0 0 1 2-3Z"/>
+      <path d="M10 9.1a2 2 0 1 1 2.3 2c-.8.2-1.3.7-1.3 1.4M11 15.1h.01"/>
+    </svg>`;
+  }
+  return `<svg class="meta-mark-icon" viewBox="0 0 24 24" fill="none"
+    stroke="currentColor" stroke-width="1.7" stroke-linecap="round"
+    stroke-linejoin="round" aria-hidden="true" focusable="false">
+    <path d="m4.5 7.5 7.5-4 7.5 4-7.5 4-7.5-4Z"/>
+    <path d="m5.5 11 6.5 3.5 6.5-3.5M5.5 15l6.5 3.5 6.5-3.5"/>
+  </svg>`;
+}
+
+function metaMark(kind, value = null) {
+  const type = kind === "question" ? "question" : "layer";
+  const label = type === "question" ? "열린 질문" : "Layer";
+  const title = type === "question" ? "질문" : "Layer";
+  const hasValue = value !== null && value !== undefined && value !== "";
+  const safeValue = hasValue
+    ? Math.max(0, Math.trunc(Number(value) || 0))
+    : null;
+  return `<span class="meta-mark meta-mark-${type}${hasValue ? "" : " meta-mark-icon-only"}"
+    role="img" title="${title}" aria-label="${label}${hasValue ? ` ${safeValue}` : ""}">
+    ${metaMarkIcon(type)}
+    ${hasValue ? `<span class="meta-mark-value" aria-hidden="true">${safeValue}</span>` : ""}
+  </span>`;
+}
+
 function subjectRow(s) {
   return `
     <a class="subject-row" href="#/s/${encodeURIComponent(s.id)}">
@@ -1100,8 +1119,8 @@ function subjectRow(s) {
         <span class="subject-arrow" aria-hidden="true">→</span>
       </div>
       <div class="row-meta">
-        <span>Layer ${s.layerCount}</span>
-        ${s.openQuestionCount ? `<span class="oq">질문 ${s.openQuestionCount}</span>` : ""}
+        ${metaMark("layer", s.layerCount)}
+        ${s.openQuestionCount ? metaMark("question", s.openQuestionCount) : ""}
       </div>
     </a>`;
 }
@@ -1140,13 +1159,21 @@ function renderSectionHeading(heading) {
 
 /* ---------- subject 상세 ---------- */
 
+function threadQuestionRow(question, subjectId) {
+  return `<a class="thread-prompt-question"
+    href="#/s/${encodeURIComponent(subjectId)}?layer=${question.raisedAtLayer}">
+    ${metaMark("question")}
+    <span class="thread-question-text">${mdInline(question.text)}</span>
+    ${metaMark("layer", question.raisedAtLayer)}
+  </a>`;
+}
+
 async function renderTimeline(id, token) {
   const s = await getJSON(`/api/subjects/${encodeURIComponent(id)}`);
   if (!routeIsCurrent(token)) return;
   const open = s.questions.filter((q) => q.status === "open");
-  const nextQuestion = open
-    .slice()
-    .sort((a, b) => String(a.raisedAtDate).localeCompare(String(b.raisedAtDate)))[0];
+  const { primary: nextQuestion, remaining: remainingQuestions } =
+    partitionOpenQuestions(open);
   const qById = Object.fromEntries(s.questions.map((q) => [q.id, q]));
   const lanes = assignLanes(s.questions);
   const laneCount = Math.max(1, ...Object.values(lanes).map((l) => l + 1));
@@ -1177,7 +1204,10 @@ async function renderTimeline(id, token) {
     <header class="subject-mast">
       <div>
         <h1 class="page-title">${esc(displayTitle(s.title))}</h1>
-        <p class="subject-meta">Layer ${s.layers.length}${open.length ? ` · 열린 질문 ${open.length}` : ""}</p>
+        <p class="subject-meta">
+          ${metaMark("layer", s.layers.length)}
+          ${open.length ? metaMark("question", open.length) : ""}
+        </p>
       </div>
       <button class="bookmark-toggle" type="button"
         data-bookmark-id="${esc(s.id)}" aria-label="북마크" aria-pressed="false">
@@ -1194,29 +1224,43 @@ async function renderTimeline(id, token) {
               <h2>열린 질문</h2>
             </div>
             <div class="thread-prompt-list">
-              <a href="#/s/${encodeURIComponent(id)}?layer=${nextQuestion.raisedAtLayer}">
-                <span>${mdInline(compactText(nextQuestion.text, 150))}</span>
-                <b>Layer ${nextQuestion.raisedAtLayer}</b>
-              </a>
-              ${open.length > 1 ? `<a class="thread-more" href="#/q">${open.length - 1}개 더 보기 →</a>` : ""}
+              ${threadQuestionRow(nextQuestion, id)}
+              ${
+                remainingQuestions.length
+                  ? `<div class="thread-prompt-more" id="thread-prompt-more" hidden>
+                      ${remainingQuestions.map((question) => threadQuestionRow(question, id)).join("")}
+                    </div>
+                    <button class="thread-more" type="button" aria-expanded="false"
+                      aria-controls="thread-prompt-more" data-more-count="${remainingQuestions.length}">
+                      <span class="thread-more-collapsed">${remainingQuestions.length}개 더 보기</span>
+                      <span class="thread-more-expanded">추가 질문 접기</span>
+                      <span aria-hidden="true">↓</span>
+                    </button>`
+                  : ""
+              }
             </div>
           </section>`
         : ""
     }
-    <nav class="layer-jump" aria-label="Layer 이동">
-      <button class="layer-jump-toggle" type="button"
-        aria-expanded="false" aria-controls="layer-jump-links">
-        <span class="layer-jump-chevron" aria-hidden="true"></span>
-        <span>Layer 이동</span>
-      </button>
-      <div class="layer-jump-links" id="layer-jump-links" hidden>
-        ${s.layers.map((layer) => `
-          <a href="#/s/${encodeURIComponent(id)}?layer=${layer.index}"
-             ${layer.index === current?.index ? `class="current" aria-current="step" aria-label="현재 Layer ${layer.index}"` : ""}>
-            ${layer.index}
-          </a>`).join("")}
-      </div>
-    </nav>
+    ${
+      s.layers.length > 1
+        ? `<nav class="layer-jump" aria-label="Layer 이동">
+            <button class="layer-jump-toggle" type="button"
+              aria-expanded="false" aria-controls="layer-jump-links">
+              ${metaMarkIcon("layer")}
+              <span>Layer 이동</span>
+              <span class="layer-jump-chevron" aria-hidden="true"></span>
+            </button>
+            <div class="layer-jump-links" id="layer-jump-links" hidden>
+              ${s.layers.map((layer) => `
+                <a href="#/s/${encodeURIComponent(id)}?layer=${layer.index}"
+                  ${layer.index === current?.index ? `class="current" aria-current="step"` : ""}>
+                  ${metaMark("layer", layer.index)}
+                </a>`).join("")}
+            </div>
+          </nav>`
+        : ""
+    }
     <h2 class="timeline-title">기록</h2>
     <div class="timeline">
       ${showStrands ? `<div class="strand-gutter"></div>` : ""}
@@ -1237,10 +1281,17 @@ async function renderTimeline(id, token) {
   });
   const layerJumpButton = app.querySelector(".layer-jump-toggle");
   const layerJumpLinks = app.querySelector(".layer-jump-links");
-  layerJumpButton.addEventListener("click", () => {
+  layerJumpButton?.addEventListener("click", () => {
     const expanded = layerJumpButton.getAttribute("aria-expanded") === "true";
     layerJumpButton.setAttribute("aria-expanded", String(!expanded));
     layerJumpLinks.hidden = expanded;
+  });
+  const threadMoreButton = app.querySelector(".thread-more");
+  const threadMoreQuestions = app.querySelector(".thread-prompt-more");
+  threadMoreButton?.addEventListener("click", () => {
+    const expanded = threadMoreButton.getAttribute("aria-expanded") === "true";
+    threadMoreButton.setAttribute("aria-expanded", String(!expanded));
+    threadMoreQuestions.hidden = expanded;
   });
 
   if (showStrands) mountStrands(s, lanes, laneCount);
@@ -1273,7 +1324,7 @@ async function renderConnections(id, repo = "misc") {
             }</span>`
           : ""
       }
-      ${x.openQuestionCount ? `<span class="si-oq">${x.openQuestionCount}</span>` : ""}
+      ${x.openQuestionCount ? `<span class="si-oq">${metaMark("question", x.openQuestionCount)}</span>` : ""}
     </a>`;
 
   const sections = [];
@@ -1352,7 +1403,7 @@ function layerCard(l, qById, isCurrent = false) {
   return `
   <article class="layer-card${isCurrent ? " current-layer" : ""}" data-layer="${l.index}">
     <div class="layer-head">
-      <span class="ln">Layer ${l.index}</span>
+      <span class="ln">${metaMark("layer", l.index)}</span>
       <span>${esc(l.date)}</span>
     </div>
     <p class="layer-lede">${mdInline(firstLine(lede))}</p>
@@ -1504,7 +1555,8 @@ async function renderQuestions(_id, token) {
   }
   app.innerHTML = `
     <header class="question-mast">
-      <h1 class="page-title">열린 질문 <span class="title-count">${questions.length}</span></h1>
+      <h1 class="page-title">열린 질문</h1>
+      <div class="question-total">${metaMark("question", questions.length)}</div>
     </header>
     <div class="question-toolbar">
       <label class="question-filter">
@@ -1512,7 +1564,7 @@ async function renderQuestions(_id, token) {
         <input id="question-filter" type="search" placeholder="질문이나 나선 이름으로 찾기" autocomplete="off" />
       </label>
       <label class="question-sort">
-        <span>정렬</span>
+        <span class="question-sort-label">정렬</span>
         <select id="question-sort">
           <option value="oldest">오래된 질문부터</option>
           <option value="newest">최근 질문부터</option>
@@ -1535,11 +1587,12 @@ async function renderQuestions(_id, token) {
     list.innerHTML = ordered
       .map((question) => `
         <a class="q-row" href="#/s/${encodeURIComponent(question.subjectId)}?layer=${question.raisedAtLayer}">
+          ${metaMark("question")}
           <span class="q-main">
             <span class="q-subject">${esc(titleById[question.subjectId] ?? question.subjectId)}</span>
             <span class="qtext">${mdInline(question.text)}</span>
           </span>
-          <span class="qwhere">Layer ${question.raisedAtLayer}</span>
+          <span class="qwhere">${metaMark("layer", question.raisedAtLayer)}</span>
         </a>`)
       .join("");
   };

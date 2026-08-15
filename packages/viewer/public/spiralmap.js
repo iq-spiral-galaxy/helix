@@ -23,7 +23,7 @@ const K_REP = 0.8;
 const REP_CUT2 = 100;
 const K_LINK = 0.010;
 const DAMP = 0.85;
-const ROT = 0.0009;     // 약 116초/회전 — 사용자가 재생했을 때만 천천히 움직인다.
+const ROT = 0.0018;     // 약 58초/회전 — 사용자가 재생했을 때만 은은하게 움직인다.
 const PARK_EPS = 0.015;
 const LABEL_BAND = 12;  // 나선 위 라벨이 차지하는 여유 (배치 간격 계산에 포함)
 
@@ -531,12 +531,10 @@ export function mount(canvas, data, opts = {}) {
 
   function showTip(n, px, py) {
     if (tipFor !== n.id) {
-      const meta =
-        n.tipMeta ??
-        `Layer ${n.layerCount}${n.oqCount ? ` · 질문 ${n.oqCount}` : ""}`;
       tip.innerHTML =
         `<strong>${escapeHtml(displayTitle(n.title))}</strong>` +
-        `<span>${escapeHtml(meta)}</span>` +
+        (n.tipMeta ? `<span>${escapeHtml(n.tipMeta)}</span>` : "") +
+        tipMetaMarks(n) +
         (n.roadmapTitle ? `<span>${escapeHtml(n.roadmapTitle)}</span>` : "");
       tip.hidden = false;
       tipFor = n.id;
@@ -743,4 +741,40 @@ function readPalette() {
 function displayTitle(t) { return String(t).replace(/^\d+[.)]\s*/, ""); }
 function escapeHtml(raw) {
   return String(raw).replace(/[&<>"']/g, (ch) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[ch]);
+}
+
+function tipMetaMarks(node) {
+  const layerCount = safeCount(node.layerCount);
+  const openQuestionCount = safeCount(node.oqCount);
+  const marks = [];
+  if (layerCount != null) marks.push(tipMetaMark("layer", layerCount));
+  if (openQuestionCount > 0) {
+    marks.push(tipMetaMark("question", openQuestionCount));
+  }
+  return marks.length
+    ? `<span class="spiral-tip-marks">${marks.join("")}</span>`
+    : "";
+}
+
+function tipMetaMark(kind, value) {
+  const isLayer = kind === "layer";
+  const label = isLayer ? "Layer" : "열린 질문";
+  const icon = isLayer
+    ? `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+        stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" focusable="false">
+        <path d="m12 4 7 4-7 4-7-4 7-4Z"/><path d="m5 12 7 4 7-4"/><path d="m5 16 7 4 7-4"/>
+      </svg>`
+    : `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+        stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" focusable="false">
+        <circle cx="12" cy="12" r="8"/><path d="M9.8 9.4a2.4 2.4 0 1 1 3.4 2.2c-.8.4-1.2.9-1.2 1.8"/><path d="M12 16.8h.01"/>
+      </svg>`;
+  return `<span class="meta-mark meta-mark-${kind}" role="img" title="${label}" aria-label="${label} ${value}">
+    <span class="meta-mark-icon" aria-hidden="true">${icon}</span>
+    <span class="meta-mark-value" aria-hidden="true">${value}</span>
+  </span>`;
+}
+
+function safeCount(raw) {
+  const count = Number(raw);
+  return Number.isFinite(count) && count >= 0 ? Math.trunc(count) : null;
 }

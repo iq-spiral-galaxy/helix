@@ -4,6 +4,7 @@ import {
   filterSidebarItems,
   normalizeSidebarQuery,
   parseBookmarkIds,
+  partitionOpenQuestions,
   sectionHeadingPresentation,
   selectHomeFocus,
   selectBookmarkItems,
@@ -116,6 +117,59 @@ describe("Helix viewer experience model", () => {
     expect(filterOpenQuestions(questions, "최근", titles)).toEqual([
       questions[0],
     ]);
+  });
+
+  it("상세 질문을 나눌 때 원본 배열을 변경하지 않는다", () => {
+    const source = [
+      { id: "q2", raisedAtLayer: 2 },
+      { id: "q1", raisedAtLayer: 1 },
+    ];
+    const original = source.slice();
+
+    partitionOpenQuestions(source);
+
+    expect(source).toEqual(original);
+  });
+
+  it("열린 질문 5개를 대표 질문 1개와 나머지 4개로 나눈다", () => {
+    const source = [
+      { id: "q4", raisedAtLayer: 4 },
+      { id: "q2", raisedAtLayer: 2 },
+      { id: "q5", raisedAtLayer: 5 },
+      { id: "q1", raisedAtLayer: 1 },
+      { id: "q3", raisedAtLayer: 3 },
+    ];
+
+    const partitioned = partitionOpenQuestions(source);
+
+    expect(partitioned.primary).toEqual(source[3]);
+    expect(partitioned.remaining.map((question) => question.id)).toEqual([
+      "q2",
+      "q3",
+      "q4",
+      "q5",
+    ]);
+  });
+
+  it("같은 Layer의 상세 질문은 질문 번호를 자연스럽게 정렬한다", () => {
+    const partitioned = partitionOpenQuestions([
+      { id: "q10", raisedAtLayer: 1 },
+      { id: "q1", raisedAtLayer: 1 },
+      { id: "q2", raisedAtLayer: 1 },
+    ]);
+
+    expect(partitioned.primary.id).toBe("q1");
+    expect(partitioned.remaining.map((question) => question.id)).toEqual([
+      "q2",
+      "q10",
+    ]);
+  });
+
+  it("열린 질문이 없으면 대표 질문 없이 빈 나머지를 반환한다", () => {
+    expect(partitionOpenQuestions([])).toEqual({
+      primary: null,
+      remaining: [],
+    });
   });
 
   it("오염되거나 중복된 북마크 저장값을 안전하게 정규화한다", () => {

@@ -81,6 +81,9 @@ describe("Helix viewer UI contract", () => {
     expect(app).toContain("Layer 이동");
     expect(app).toContain("?chapter=");
     expect(app).toContain("focusGroup:");
+    expect(app).toContain('role="img" title="${title}" aria-label="${label}');
+    expect(app).toContain('class="meta-mark meta-mark-${type}');
+    expect(app).toContain('focusable="false"');
   });
 
   it("외부 CDN 없이 안전한 Markdown과 Obsidian callout을 렌더한다", () => {
@@ -130,16 +133,15 @@ describe("Helix viewer UI contract", () => {
     expect(app).toContain('aria-controls="layer-jump-links"');
     expect(app).toContain('class="layer-jump-links" id="layer-jump-links" hidden');
     expect(app).toContain('layerJumpButton.setAttribute("aria-expanded"');
+    expect(app).toContain("s.layers.length > 1");
+    expect(app).toContain('metaMark("layer", layer.index)');
     expect(css).toContain("--layer-rail-gap: 1.1rem");
     expect(lastRule(css, ".layer-jump")).toContain("align-items: center");
     expect(lastRule(css, ".layer-jump-links")).toContain("align-items: center");
     expect(lastRule(css, ".layer-jump-links")).toContain("padding: 7px 4px");
     expect(lastRule(css, ".layer-jump-toggle")).toContain("align-items: center");
-    expect(lastRule(css, ".layer-jump a:not(.latest-link)")).toContain(
-      "place-items: center",
-    );
-    expect(lastRule(css, ".layer-jump a:not(.latest-link)")).toContain(
-      "line-height: 1",
+    expect(lastRule(css, ".layer-jump a.current .meta-mark")).toContain(
+      "background: var(--accent-soft)",
     );
     expect(lastRule(css, ".layer-card.current-layer::before")).toContain(
       "left: calc(-1 * var(--layer-rail-gap))",
@@ -261,6 +263,7 @@ describe("Helix viewer UI contract", () => {
       /playBtn\.addEventListener\("click",[\s\S]*?motion = !motion;[\s\S]*?paintPlayButton\(\);[\s\S]*?wake\(\);/,
     );
     expect(map).toContain("playBtn.disabled = reduceMotion.matches");
+    expect(map).toContain("const ROT = 0.0018");
     expect(map).toMatch(/onReduceMotionChange[\s\S]*?motion = false;[\s\S]*?wake\(\);/);
     expect(map).toContain('reduceMotion.removeEventListener("change", onReduceMotionChange)');
     expect(map).toContain('"aria-label", "지도 제어"');
@@ -277,6 +280,37 @@ describe("Helix viewer UI contract", () => {
     expect(css).toContain(".back-link");
   });
 
+  it("상세의 열린 질문을 현재 나선 안에서 정확히 1개와 나머지로 펼친다", () => {
+    expect(app).toContain("partitionOpenQuestions(open)");
+    expect(app).toContain('class="thread-prompt-more" id="thread-prompt-more" hidden');
+    expect(app).toContain('aria-controls="thread-prompt-more"');
+    expect(app).toContain("remainingQuestions.map((question) => threadQuestionRow(question, id))");
+    expect(app).toContain('threadMoreQuestions.hidden = expanded');
+    expect(app).not.toContain('class="thread-more" href="#/q"');
+    expect(app).not.toContain("compactText(nextQuestion.text, 150)");
+    expect(lastRule(css, ".q-row .qtext")).toContain("overflow: visible");
+    expect(lastRule(css, ".q-row .qtext")).toContain("-webkit-line-clamp: unset");
+  });
+
+  it("홈은 최근 노트 흐름만 유지하고 불필요한 질문 수 정렬 토글을 두지 않는다", () => {
+    expect(app).toContain('sortSubjects(subjects, "recent")');
+    expect(app).not.toContain('data-home-sort="questions"');
+    expect(app).not.toContain("질문 많은 순");
+    expect(app).not.toContain('class="subject-sort"');
+  });
+
+  it("지도 목록 제어와 Layer·질문 마크를 충분한 크기로 표시한다", () => {
+    expect(app).toContain('<summary><span>목록으로 보기</span></summary>');
+    expect(app).toContain('class="mf-meta"');
+    expect(map).toContain('class="spiral-tip-marks"');
+    expect(map).toContain('class="meta-mark meta-mark-${kind}"');
+    expect(lastRule(css, ".map-index > summary")).toContain("min-height: 52px");
+    expect(lastRule(css, ".map-index > summary")).toContain("font-size: 0.9rem");
+    expect(
+      ruleBodies(css, ".meta-mark").some((body) => body.includes("min-height: 28px")),
+    ).toBe(true);
+  });
+
   it("데스크톱 사이드바를 다시 열 수 있고 질문 정렬을 가로로 유지한다", () => {
     const asideEnd = html.indexOf("</aside>");
     const desktopToggle = html.indexOf('id="sidebar-collapse"');
@@ -289,6 +323,14 @@ describe("Helix viewer UI contract", () => {
     expect(css).toContain(':root[data-sidebar="collapsed"] .sidebar');
     expect(css).toMatch(/\.question-sort > span \{[\s\S]*?white-space: nowrap;/);
     expect(css).toMatch(/\.question-sort > span \{[\s\S]*?writing-mode: horizontal-tb;/);
+    expect(
+      ruleBodies(css, ".question-toolbar").some((body) => body.includes("column-gap: 26px")),
+    ).toBe(true);
+    expect(
+      ruleBodies(css, ".question-sort").some((body) => body.includes("gap: 12px")),
+    ).toBe(true);
+    expect(lastRule(css, ".question-sort > span")).toContain("font-size: 0.88rem");
+    expect(lastRule(css, ".question-sort > span")).toContain("font-weight: 600");
   });
 
   it("사이드바는 기본 목록 없이 검색할 때만 평면 결과를 연다", () => {
@@ -432,9 +474,11 @@ describe("Helix viewer UI contract", () => {
   });
 
   it("검색 포커스는 내부 테두리 없이 하나의 accent 외곽선만 사용한다", () => {
-    expect(lastRule(css, ".question-filter input:focus-visible")).toContain(
-      "border-color: transparent",
-    );
+    const toolbarFocus = css.match(
+      /\.question-filter input:focus-visible,\s*\.question-sort select:focus-visible\s*\{([^{}]*)\}/,
+    )?.[1] ?? "";
+    expect(toolbarFocus).toContain("border-color: transparent");
+    expect(toolbarFocus).toContain("outline: 2px solid var(--focus-ring)");
     expect(lastRule(css, ".side-search:focus-within")).toContain(
       "border-color: transparent",
     );
@@ -447,13 +491,15 @@ describe("Helix viewer UI contract", () => {
   });
 
   it("현재 Layer·질문 상태·북마크가 같은 accent 상태 토큰을 공유한다", () => {
-    expect(lastRule(css, ".layer-jump a.current")).toContain(
+    expect(lastRule(css, ".layer-jump a.current .meta-mark")).toContain(
       "background: var(--accent-soft)",
     );
-    expect(lastRule(css, ".subject-row .row-meta .oq")).toContain(
+    expect(lastRule(css, ".meta-mark-question")).toContain(
+      "background: var(--accent-soft)",
+    );
+    expect(lastRule(css, ".meta-mark-layer .meta-mark-value")).toContain(
       "color: var(--accent)",
     );
-    expect(lastRule(css, ".si-oq")).toContain("background: var(--accent)");
     expect(
       ruleBodies(css, '.bookmark-toggle[aria-pressed="true"]').join("\n"),
     ).toContain(
